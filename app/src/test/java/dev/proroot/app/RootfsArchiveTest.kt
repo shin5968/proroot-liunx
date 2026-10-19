@@ -14,11 +14,11 @@ class RootfsArchiveTest {
         val bytes = ByteArrayOutputStream()
         TarArchiveOutputStream(GZIPOutputStream(bytes)).use { tar ->
             for ((name, type, value) in entries) {
-                val entry = TarArchiveEntry(name, type)
+                val entry = TarArchiveEntry(name, type, true)
                 val content = value.toByteArray()
                 if (type == '0'.code.toByte()) entry.size = content.size.toLong() else entry.linkName = value
                 tar.putArchiveEntry(entry)
-                if (entry.isFile) tar.write(content)
+                if (type == '0'.code.toByte()) tar.write(content)
                 tar.closeArchiveEntry()
             }
         }
