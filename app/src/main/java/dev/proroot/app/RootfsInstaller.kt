@@ -83,7 +83,15 @@ class RootfsInstaller(application: Application) : AndroidViewModel(application) 
                 report(State(true, "Extracting rootfs"))
                 val extractor = RootfsArchive(
                     symlink = { target, file -> Os.symlink(target, file.absolutePath) },
-                    hardlink = { target, file -> Os.link(target.absolutePath, file.absolutePath) },
+                    hardlink = { target, file ->
+                        try { Os.link(target.absolutePath, file.absolutePath) }
+                        catch (error: android.system.ErrnoException) {
+                            if (error.errno !in listOf(android.system.OsConstants.EACCES, android.system.OsConstants.EPERM, android.system.OsConstants.EXDEV)) throw error
+                            // Android SELinux can deny hardlinks for the app UID. Materialize the file instead.
+                            target.copyTo(file)
+                            Os.chmod(file.absolutePath, Os.stat(target.absolutePath).st_mode and 511)
+                        }
+                    },
                     chmod = { file, mode -> Os.chmod(file.absolutePath, mode) },
                 )
                 archive.inputStream().use { extractor.extract(it, staging, ::checkCancelled) }

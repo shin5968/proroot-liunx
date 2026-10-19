@@ -16,7 +16,7 @@ https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.
 
 Pinned SHA-256: `a91d5a93010193712d346d761372b7c9db6dfcf093893161c64ca107f05914f2` (official SHA256SUMS).
 
-Installation uses a private staging directory, verifies the download before extraction, preserves symlinks/hardlinks and executable modes, rejects archive path traversal, then renames the completed tree into place. Cancel/failure cleans the temporary download and staging tree without following symlinks. A previous rootfs is never overwritten. Failed downloads restart from zero on retry. An activity recreation retains the installer via ViewModel; process death requires retry. Persistent background downloading is not implemented.
+Installation uses a private staging directory, verifies the download before extraction, preserves symlinks and executable modes (archive hardlinks fall back to copies when Android denies link creation), rejects archive path traversal, then renames the completed tree into place. Cancel/failure cleans the temporary download and staging tree without following symlinks. A previous rootfs is never overwritten. Failed downloads restart from zero on retry. An activity recreation retains the installer via ViewModel; process death requires retry. Persistent background downloading is not implemented.
 
 ## Development
 
@@ -42,3 +42,4 @@ SDK 28 is intentional for prototype rootfs execution compatibility. The Play Sto
 - Apache Commons Compress: Apache-2.0. https://commons.apache.org/proper/commons-compress/ .
 - Gradle wrapper 8.9: Apache-2.0, license in `third-party/gradle-LICENSE`.
 - Ubuntu Base: https://www.ubuntu.com/legal . Per-package licenses are in the downloaded rootfs `/usr/share/doc`.
+
