@@ -19,7 +19,14 @@ jobs:
           packages: 'platform-tools'
           log-accepted-android-sdk-licenses: false
       - name: Install Android tools
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+        run: |
+          for attempt in 1 2 3; do
+            if sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'; then
+              exit 0
+            fi
+            if [ "$attempt" = 3 ]; then exit 1; fi
+            sleep 5
+          done
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
@@ -36,5 +43,3 @@ jobs:
           name: lint-report
           path: app/build/reports/lint-results-debug.html
           if-no-files-found: ignore
-
-
