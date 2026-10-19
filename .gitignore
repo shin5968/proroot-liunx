@@ -1,0 +1,9 @@
+.gradle/
+.kotlin/
+**/build/
+local.properties
+.idea/
+*.iml
+.tools/
+# Runtime binaries are supplied separately after license review.
+app/src/main/jniLibs/arm64-v8a/*.so

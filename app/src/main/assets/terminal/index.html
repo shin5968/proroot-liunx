@@ -1,0 +1,10 @@
+<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="stylesheet" href="xterm.css"><style>html,body,#terminal{margin:0;width:100%;height:100%;background:#10151d;overflow:hidden}</style></head><body><div id="terminal"></div><script src="xterm.js"></script><script src="addon-fit.js"></script><script>
+const terminal = new Terminal({cursorBlink:true,fontSize:14,scrollback:3000,theme:{background:'#10151d',foreground:'#dce6f0'}});
+const fit = new FitAddon.FitAddon(); terminal.loadAddon(fit); terminal.open(document.getElementById('terminal'));
+terminal.onData(data=>Host.input(data));
+terminal.onResize(size=>Host.resize(size.cols,size.rows));
+window.receive = data => terminal.write(Uint8Array.from(atob(data), c=>c.charCodeAt(0)));
+window.statusLine = text => terminal.writeln('\r\n\x1b[36m'+text+'\x1b[0m');
+new ResizeObserver(()=>fit.fit()).observe(document.body);
+fit.fit(); Host.ready();
+</script></body></html>
