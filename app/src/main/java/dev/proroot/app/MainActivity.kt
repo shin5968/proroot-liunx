@@ -54,6 +54,13 @@ class MainActivity : ComponentActivity() {
                             Button(enabled = !running && ready, onClick = { startSession(true) }) { Text("Linux") }
                             OutlinedButton(enabled = running, onClick = { stopSession() }) { Text("Stop") }
                         }
+                        if (tab == 0) {
+                            Row(Modifier.padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                TextButton(enabled = running, onClick = { session?.write(byteArrayOf(3)) }) { Text("Ctrl-C") }
+                                TextButton(enabled = running, onClick = { session?.write(byteArrayOf(9)) }) { Text("Tab") }
+                                TextButton(enabled = running, onClick = { session?.write(byteArrayOf(27)) }) { Text("Esc") }
+                            }
+                        }
                         Box(Modifier.weight(1f).fillMaxWidth()) {
                             // Keep the WebView mounted across tabs so terminal state and output survive.
                             AndroidView(factory = { makeTerminal() }, modifier = if (tab == 0) Modifier.fillMaxSize() else Modifier.size(0.dp))
@@ -142,4 +149,5 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 }
+
 
