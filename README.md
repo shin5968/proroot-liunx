@@ -1,55 +1,44 @@
 # Proroot Linux — Android host MVP
 
-ARM64 Android host built with Jetpack Compose, offline xterm.js 5.5.0 + fit addon 0.10.0, and a native PTY bridge.
+ARM64 Android host with Compose, offline xterm.js, native PTY, bundled Proroot and an in-app Ubuntu installer.
 
-## Included
+## Install and launch
 
-- Terminal / GUI / Container tabs, real PTY input, output, resize and process termination.
-- Host shell smoke test (`/system/bin/sh`). This is Android, not a Linux rootfs.
-- Official Proroot launcher integration with rootfs and private temp directory.
-- SurfaceView placeholder. Vulkan ICD, libhybris, WSI, audio, rootfs download/import, multiple containers and background service are **not implemented**.
-- ARM64 debug APK + lint reports built by GitHub Actions on push, PR or manual dispatch.
+1. GitHub → Actions → Android APK → successful run → Artifacts → `proroot-linux-arm64-debug`.
+2. Unzip and install the APK on an ARM64 Android 8+ device.
+3. Open **Container → Download & install Ubuntu**. Keep the app open during installation. Internet and at least 1.5 GiB free space are required.
+4. After verification and extraction, press **Launch Linux**. Host shell remains available to test the Android PTY independently.
 
-## Build
+The APK includes all five unmodified Proroot v1.2.8 libraries. CI fetches them from the official release and checks pinned SHA-256 values, then verifies the APK contains the identical bytes. Binaries are not redistributed as standalone repository files. The license is bundled in assets and available in the Container tab.
 
-GitHub → Actions → Android APK → successful run → Artifacts → `proroot-linux-arm64-debug`.
-Unzip and install the APK on an ARM64 Android 8+ device. Use **Host shell** to test terminal I/O (`echo hello`, `ls`, `stty size`), Ctrl-C and Stop/restart.
-A local build needs JDK 17, Android SDK 35, NDK 27.2.12479018 and CMake 3.22.1: `./gradlew :app:assembleDebug :app:lintDebug`.
+Ubuntu Base 24.04.5 ARM64 is downloaded separately from the official Ubuntu server:
+https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.5-base-arm64.tar.gz
 
-## Enable Linux (developer provisioning)
+Pinned SHA-256: `a91d5a93010193712d346d761372b7c9db6dfcf093893161c64ca107f05914f2` (official SHA256SUMS).
 
-Proroot binaries and Ubuntu rootfs are deliberately not redistributed in this initial source tree.
-Obtain the five unmodified ARM64 libraries from https://github.com/coderredlab/proroot/releases and review its LICENSE before redistribution. Place them in `app/src/main/jniLibs/arm64-v8a/` before building:
+Installation uses a private staging directory, verifies the download before extraction, preserves symlinks/hardlinks and executable modes, rejects archive path traversal, then renames the completed tree into place. Cancel/failure cleans the temporary download and staging tree without following symlinks. A previous rootfs is never overwritten. Failed downloads restart from zero on retry. An activity recreation retains the installer via ViewModel; process death requires retry. Persistent background downloading is not implemented.
 
-- libproroot.so
-- libproroot-runtime.so
-- libproroot-linker.so
-- libproroot-bridge.so
-- libproroot-stub-loader.so
+## Development
 
-The `.gitignore` excludes these binaries. GitHub builds from the current repository provide the host shell; adding binaries to a local directory alone does not put them into a GitHub build.
-
-Install the debug APK first. Provision a **trusted** Ubuntu ARM64 rootfs archive that contains `bin/sh` and `/root` directly under its root (not inside an extra directory). On an adb-connected device:
+JDK 17, SDK 35, NDK 27.2.12479018 and CMake 3.22.1 are required.
 
 ```sh
-adb push ubuntu-arm64-rootfs.tar.gz /data/local/tmp/proroot-rootfs.tar.gz
-adb shell "run-as dev.proroot.app mkdir -p files/rootfs"
-adb shell "run-as dev.proroot.app /system/bin/tar -xzf /data/local/tmp/proroot-rootfs.tar.gz -C files/rootfs"
-adb shell "run-as dev.proroot.app mkdir -p files/rootfs/root"
+bash scripts/fetch-proroot.sh
+./gradlew :app:assembleDebug :app:lintDebug :app:testDebugUnitTest
 ```
 
-Device tar support, ownership handling and symlink behavior must be checked on the target device. This is a developer procedure, not a finished installer. Open Container to inspect paths, then Linux to launch `/bin/sh -i` through `libproroot.so`.
+GitHub Actions also tests extraction of the actual pinned Ubuntu archive, malicious archive paths, link handling and cancellation. It uploads the APK and lint report. Device-side Linux execution is a separate validation step.
 
-## Compatibility and lifecycle
+## Current scope
 
-This prototype targets SDK 28 because Android's newer app-data execution policy must be addressed before raising the target. It is not ready for Play Store distribution. The target must not be raised without validating the glibc loader/rootfs execution route. Modern SDK targeting is a separate integration task.
+Terminal input/output/resize, Ctrl-C/Tab/Esc, session termination, container install/progress/cancel/retry, Proroot launcher integration and GUI SurfaceView placeholder are implemented. Vulkan ICD, libhybris, WSI, audio, multiple containers and a foreground service are not implemented. Closing the activity stops terminal sessions; downloads survive activity recreation but not process death.
 
-Runtime runs with the app UID. Fake root does not grant device permissions or isolation. Run only trusted programs. Closing the activity stops its session; background persistence is not implemented. Rotation preserves the activity. GUI tab currently contains an empty SurfaceView and cannot display Linux windows.
-
-## Next gate
-
-On one specific device, first establish rootless Proroot execution, then demonstrate Vulkan GPU enumeration and compute via a libhybris ICD in the same process. Verify loader/TLS coexistence, vendor dependencies and SELinux access before integrating WSI and shared buffers. Never treat the empty SurfaceView as GPU acceleration.
+SDK 28 is intentional for prototype rootfs execution compatibility. The Play Store target requirement remains a lint warning, and this APK is for direct installation. Raising the target requires validating a different app-data execution route. Proroot fake root does not grant device privileges; guest apps run with the host app UID. No zero-overhead performance result has been measured.
 
 ## Third-party notices
 
-xterm.js and addon-fit are MIT licensed; notices are included beside the bundled assets. Sources: https://github.com/xtermjs/xterm.js . No Termux source is included. Gradle wrapper comes from Gradle 8.9 (Apache-2.0): https://github.com/gradle/gradle . Proroot remains a separately supplied proprietary dependency. No zero-overhead performance claim has been measured.
+- Proroot v1.2.8 by coderred: https://github.com/coderredlab/proroot . Unmodified binaries bundled only as part of the APK under the license in `app/src/main/assets/licenses/proroot-LICENSE.txt`.
+- xterm.js 5.5.0 / addon-fit 0.10.0: MIT, licenses beside assets. https://github.com/xtermjs/xterm.js . No Termux source is included.
+- Apache Commons Compress: Apache-2.0. https://commons.apache.org/proper/commons-compress/ .
+- Gradle wrapper 8.9: Apache-2.0, license in `third-party/gradle-LICENSE`.
+- Ubuntu Base: https://www.ubuntu.com/legal . Per-package licenses are in the downloaded rootfs `/usr/share/doc`.

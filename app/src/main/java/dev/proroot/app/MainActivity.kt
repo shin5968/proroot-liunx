@@ -9,6 +9,9 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.lifecycle.ViewModelProvider
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -21,6 +24,7 @@ import org.json.JSONObject
 import java.io.File
 
 class MainActivity : ComponentActivity() {
+    private lateinit var installer: RootfsInstaller
     private var session: PtySession? = null
     private var terminal: WebView? = null
     private var ready by mutableStateOf(false)
@@ -37,6 +41,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         File(filesDir, "tmp").mkdirs()
+        installer = ViewModelProvider(this)[RootfsInstaller::class.java]
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 var tab by remember { mutableIntStateOf(0) }
@@ -51,7 +56,7 @@ class MainActivity : ComponentActivity() {
                         }
                         Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(enabled = !running && ready, onClick = { startSession(false) }) { Text("Host shell") }
-                            Button(enabled = !running && ready, onClick = { startSession(true) }) { Text("Linux") }
+                            Button(enabled = !running && ready && installer.state.installed && !installer.state.busy, onClick = { startSession(true) }) { Text("Linux") }
                             OutlinedButton(enabled = running, onClick = { stopSession() }) { Text("Stop") }
                         }
                         if (tab == 0) {
@@ -71,13 +76,32 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                             if (tab == 2) {
-                                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Text("Default container", style = MaterialTheme.typography.titleLarge)
+                                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text("Ubuntu container", style = MaterialTheme.typography.titleLarge)
+                                    Text(RootfsInstaller.VERSION)
+                                    Text("Proroot v1.2.8: ${if (missingRuntime().isEmpty()) "bundled" else "missing ${missingRuntime().joinToString()}"}")
+                                    Text(installer.state.message)
+                                    if (installer.state.busy) {
+                                        val progress = installer.state.progress
+                                        if (progress == null) LinearProgressIndicator(Modifier.fillMaxWidth())
+                                        else LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                                        OutlinedButton(onClick = { installer.cancel() }) { Text("Cancel installation") }
+                                    } else if (!installer.state.installed) {
+                                        Text("Download Ubuntu Base from Ubuntu's official server. Requires internet and at least 1.5 GiB free space.")
+                                        Button(enabled = !running, onClick = { installer.install() }) { Text("Download & install Ubuntu") }
+                                    } else {
+                                        Button(enabled = ready && !running, onClick = { tab = 0; startSession(true) }) { Text("Launch Linux") }
+                                    }
                                     Text("Rootfs: ${rootfs.absolutePath}")
-                                    Text("Shell: ${if (File(rootfs, "bin/sh").exists()) "found" else "not installed"}")
-                                    Text("Runtime: ${if (missingRuntime().isEmpty()) "installed" else "missing ${missingRuntime().joinToString()}"}")
-                                    Text("ARM64 · rootless · glibc\nInstall the runtime in jniLibs before building. Provision a trusted Ubuntu ARM64 rootfs using the README instructions.")
-                                    Text("Prototype uses target SDK 28 for rootfs execution compatibility. Store distribution and newer-target execution need separate validation.")
+                                    Text("Proroot by coderred · unmodified v1.2.8 binaries. Ubuntu Base is downloaded separately.")
+                                    var showLicense by remember { mutableStateOf(false) }
+                                    TextButton(onClick = { showLicense = true }) { Text("Proroot license") }
+                                    if (showLicense) {
+                                        AlertDialog(onDismissRequest = { showLicense = false }, title = { Text("Proroot license") },
+                                            text = { Text(remember { assets.open("licenses/proroot-LICENSE.txt").bufferedReader().use { it.readText() } }, modifier = Modifier.verticalScroll(rememberScrollState())) },
+                                            confirmButton = { TextButton(onClick = { showLicense = false }) { Text("Close") } })
+                                    }
+                                    Text("Prototype targets SDK 28 for rootfs execution compatibility. Vulkan/WSI is not connected yet.")
                                 }
                             }
                         }
@@ -97,7 +121,7 @@ class MainActivity : ComponentActivity() {
         addJavascriptInterface(object {
             @JavascriptInterface fun ready() = runOnUiThread {
                 ready = true
-                line("Ready. Host shell tests PTY; Linux requires a provisioned runtime and rootfs.")
+                line("Ready. Install Ubuntu from the Container tab, then launch Linux.")
             }
             @JavascriptInterface fun input(data: String) = runOnUiThread { session?.write(data.toByteArray(Charsets.UTF_8)) }
             @JavascriptInterface fun resize(c: Int, r: Int) = runOnUiThread {
@@ -123,8 +147,8 @@ class MainActivity : ComponentActivity() {
     private fun line(text: String) { terminal?.evaluateJavascript("window.statusLine(${JSONObject.quote(text)})", null) }
     private fun startSession(linux: Boolean) {
         if (running) return
-        if (linux && (missingRuntime().isNotEmpty() || !File(rootfs, "bin/sh").exists())) {
-            line("Linux unavailable. See Container tab and README for runtime/rootfs setup."); return
+        if (linux && (missingRuntime().isNotEmpty() || !installer.state.installed || installer.state.busy)) {
+            line("Linux unavailable. Download and install Ubuntu from the Container tab."); return
         }
         val token = ++generation
         try {
@@ -149,5 +173,3 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 }
-
-

@@ -30,8 +30,24 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Fetch verified Proroot binaries
+        run: bash scripts/fetch-proroot.sh
+      - name: Download rootfs extraction test fixture
+        run: |
+          curl --fail --location --retry 3 'https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.5-base-arm64.tar.gz' -o "$RUNNER_TEMP/ubuntu-rootfs.tar.gz"
+          echo "a91d5a93010193712d346d761372b7c9db6dfcf093893161c64ca107f05914f2  $RUNNER_TEMP/ubuntu-rootfs.tar.gz" | sha256sum --check
       - name: Build and lint
-        run: ./gradlew --no-daemon :app:assembleDebug :app:lintDebug
+        env:
+          ROOTFS_TEST_ARCHIVE: ${{ runner.temp }}/ubuntu-rootfs.tar.gz
+        run: ./gradlew --no-daemon :app:assembleDebug :app:lintDebug :app:testDebugUnitTest
+      - name: Verify bundled runtime is unmodified
+        run: |
+          python3 - <<'PY'
+          import hashlib, pathlib, zipfile
+          with zipfile.ZipFile('app/build/outputs/apk/debug/app-debug.apk') as apk:
+              for source in pathlib.Path('app/src/main/jniLibs/arm64-v8a').glob('libproroot*.so'):
+                  assert hashlib.sha256(apk.read('lib/arm64-v8a/' + source.name)).digest() == hashlib.sha256(source.read_bytes()).digest(), source.name
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: proroot-linux-arm64-debug
