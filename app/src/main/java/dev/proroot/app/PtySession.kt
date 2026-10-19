@@ -1,8 +1,6 @@
 package dev.proroot.app
 
 import android.os.ParcelFileDescriptor
-import java.io.FileInputStream
-import java.io.FileOutputStream
 import java.util.concurrent.Executors
 
 object NativePty {
@@ -20,6 +18,7 @@ class PtySession(launcher: String, root: String, tmp: String, private val output
     private val writer = ParcelFileDescriptor.AutoCloseOutputStream(ParcelFileDescriptor.dup(descriptor.fileDescriptor))
     private val writes = Executors.newSingleThreadExecutor()
     @Volatile private var closed = false
+    @Volatile private var reaped = false
     init {
         Thread({
             try {
@@ -27,7 +26,7 @@ class PtySession(launcher: String, root: String, tmp: String, private val output
                 while (!closed) { val count = input.read(buffer); if (count < 0) break; output(buffer.copyOf(count)) }
             } catch (_: java.io.IOException) { /* PTY returns EIO when the slave closes. */ }
         }, "pty-reader").start()
-        Thread({ val status = NativePty.waitFor(process[1].toInt()); exited(status) }, "pty-wait").start()
+        Thread({ val status = NativePty.waitFor(process[1].toInt()); reaped = true; exited(status) }, "pty-wait").start()
     }
     fun write(bytes: ByteArray) {
         if (!closed) try { writes.execute { try { if (!closed) writer.write(bytes) } catch (_: java.io.IOException) {} } }
@@ -37,7 +36,7 @@ class PtySession(launcher: String, root: String, tmp: String, private val output
     fun close() {
         if (closed) return
         closed = true
-        NativePty.stop(process[1].toInt())
+        if (!reaped) NativePty.stop(process[1].toInt())
         writes.shutdownNow()
         input.close(); writer.close(); descriptor.close()
     }
