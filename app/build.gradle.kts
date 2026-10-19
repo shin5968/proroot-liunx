@@ -17,6 +17,13 @@ android {
         ndk { abiFilters += "arm64-v8a" }
         externalNativeBuild { cmake { cppFlags += "-std=c++17" } }
     }
+    // Public development key only; never use for a production release.
+    signingConfigs.getByName("debug") {
+        storeFile = rootProject.file("debug.keystore")
+        storePassword = "android"
+        keyAlias = "androiddebugkey"
+        keyPassword = "android"
+    }
     // Sideload-only prototype: retain this finding as a warning in the lint report.
     lint { warning += "ExpiredTargetSdkVersion" }
     buildFeatures { compose = true }
@@ -34,4 +41,3 @@ dependencies {
     implementation("org.apache.commons:commons-compress:1.27.1")
     testImplementation("junit:junit:4.13.2")
 }
-

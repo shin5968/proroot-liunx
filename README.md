@@ -43,3 +43,5 @@ SDK 28 is intentional for prototype rootfs execution compatibility. The Play Sto
 - Gradle wrapper 8.9: Apache-2.0, license in `third-party/gradle-LICENSE`.
 - Ubuntu Base: https://www.ubuntu.com/legal . Per-package licenses are in the downloaded rootfs `/usr/share/doc`.
 
+
+Debug APKs use the checked-in public development keystore so successive GitHub builds can update the test installation. This key is not suitable for production signing. Older builds signed with ephemeral keys require a one-time reinstall.
