@@ -17,6 +17,8 @@ android {
         ndk { abiFilters += "arm64-v8a" }
         externalNativeBuild { cmake { cppFlags += "-std=c++17" } }
     }
+    // Sideload-only prototype: retain this finding as a warning in the lint report.
+    lint { warning += "ExpiredTargetSdkVersion" }
     buildFeatures { compose = true }
     packaging { jniLibs { useLegacyPackaging = true } }
     externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
