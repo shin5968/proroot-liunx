@@ -1,38 +1,51 @@
 package dev.proroot.app
 
 import android.annotation.SuppressLint
-import android.graphics.Color
+import android.graphics.Color as AndroidColor
 import android.os.Bundle
 import android.util.Base64
-import android.view.SurfaceView
+import android.view.inputmethod.InputMethodManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.lifecycle.ViewModelProvider
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.ViewModelProvider
 import org.json.JSONObject
 import java.io.File
 
 class MainActivity : ComponentActivity() {
     private lateinit var installer: RootfsInstaller
+    private val preferences by lazy { getSharedPreferences("appearance", MODE_PRIVATE) }
     private var session: PtySession? = null
     private var terminal: WebView? = null
     private var ready by mutableStateOf(false)
-    private var generation = 0
-    private var status by mutableStateOf("Stopped")
+    private var screen by mutableStateOf("home")
     private var running by mutableStateOf(false)
+    private var status by mutableStateOf("세션 대기 중")
+    private var fontSize by mutableIntStateOf(14)
+    private var dark by mutableStateOf(false)
+    private var generation = 0
     private var cols = 80
     private var rows = 24
+    private var pendingLaunch = false
+    private var desiredHost = false
+    private var sessionHost = false
     private val rootfs get() = File(filesDir, "rootfs")
     private val launcher get() = File(applicationInfo.nativeLibraryDir, "libproroot.so")
     private val runtimeNames = listOf("libproroot.so", "libproroot-runtime.so", "libproroot-linker.so", "libproroot-bridge.so", "libproroot-stub-loader.so")
@@ -40,68 +53,74 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         File(filesDir, "tmp").mkdirs()
         installer = ViewModelProvider(this)[RootfsInstaller::class.java]
+        fontSize = preferences.getInt("fontSize", 14).coerceIn(10, 24)
+        dark = preferences.getBoolean("dark", false)
+        if (preferences.getBoolean("startTerminal", false) && installer.state.installed) openTerminal()
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
-                var tab by remember { mutableIntStateOf(0) }
-                Surface(Modifier.fillMaxSize()) {
-                    Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
-                        Text("Proroot Linux", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(16.dp))
-                        Text(status, modifier = Modifier.padding(horizontal = 16.dp))
-                        TabRow(selectedTabIndex = tab) {
-                            listOf("Terminal", "GUI", "Container").forEachIndexed { index, name ->
-                                Tab(selected = tab == index, onClick = { tab = index }, text = { Text(name) })
+            val colors = if (dark) darkColorScheme(primary = Color(0xFFB4DFC9), background = Color(0xFF15211B), surface = Color(0xFF1D2C24))
+                else lightColorScheme(primary = Color(0xFF174B3A), background = Color(0xFFF7F9F6), surface = Color.White, onSurface = Color(0xFF26332E))
+            MaterialTheme(colorScheme = colors) {
+                val fullscreen = screen == "terminal"
+                var menu by remember { mutableStateOf(false) }
+                var keys by remember { mutableStateOf(false) }
+                LaunchedEffect(fullscreen, dark) { updateSystemBars(fullscreen) }
+                BackHandler(enabled = screen != "home") { pendingLaunch = false; screen = "home" }
+                Box(Modifier.fillMaxSize().background(colors.background)) {
+                    // This one WebView survives navigation; PTY output keeps flowing while hidden.
+                    Column(if (fullscreen) Modifier.fillMaxSize().imePadding() else Modifier.size(0.dp)) {
+                        AndroidView(factory = { makeTerminal() }, modifier = Modifier.weight(1f).fillMaxWidth(), update = { view ->
+                            view.setBackgroundColor(if (dark) AndroidColor.rgb(16, 25, 20) else AndroidColor.rgb(247, 249, 246))
+                            if (ready) view.post {
+                                view.evaluateJavascript("window.configureTerminal?.($fontSize,$dark)", null)
+                                if (fullscreen) view.evaluateJavascript("window.fitTerminal?.()", null)
                             }
-                        }
-                        Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(enabled = !running && ready, onClick = { startSession(false) }) { Text("Host shell") }
-                            Button(enabled = !running && ready && installer.state.installed && !installer.state.busy, onClick = { startSession(true) }) { Text("Linux") }
-                            OutlinedButton(enabled = running, onClick = { stopSession() }) { Text("Stop") }
-                        }
-                        if (tab == 0) {
-                            Row(Modifier.padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                TextButton(enabled = running, onClick = { session?.write(byteArrayOf(3)) }) { Text("Ctrl-C") }
-                                TextButton(enabled = running, onClick = { session?.write(byteArrayOf(9)) }) { Text("Tab") }
-                                TextButton(enabled = running, onClick = { session?.write(byteArrayOf(27)) }) { Text("Esc") }
-                            }
-                        }
-                        Box(Modifier.weight(1f).fillMaxWidth()) {
-                            // Keep the WebView mounted across tabs so terminal state and output survive.
-                            AndroidView(factory = { makeTerminal() }, modifier = if (tab == 0) Modifier.fillMaxSize() else Modifier.size(0.dp))
-                            if (tab == 1) {
-                                Column(Modifier.fillMaxSize()) {
-                                    Text("GUI surface ready for integration. Vulkan/WSI is not connected yet.", modifier = Modifier.padding(16.dp))
-                                    AndroidView(factory = { SurfaceView(it).apply { setBackgroundColor(Color.BLACK) } }, modifier = Modifier.fillMaxSize())
+                        })
+                        if (fullscreen && keys) {
+                            Row(Modifier.fillMaxWidth().background(colors.surface).navigationBarsPadding(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                listOf("Ctrl-C" to "\u0003", "Esc" to "\u001b", "Tab" to "\t", "↑" to "\u001b[A", "↓" to "\u001b[B", "←" to "\u001b[D", "→" to "\u001b[C").forEach { (label, value) ->
+                                    TextButton(onClick = { session?.write(value.toByteArray()) }, contentPadding = PaddingValues(4.dp), modifier = Modifier.weight(1f).height(48.dp)) { Text(label, maxLines = 1) }
                                 }
                             }
-                            if (tab == 2) {
-                                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Text("Ubuntu container", style = MaterialTheme.typography.titleLarge)
-                                    Text(RootfsInstaller.VERSION)
-                                    Text("Proroot v1.2.8: ${if (missingRuntime().isEmpty()) "bundled" else "missing ${missingRuntime().joinToString()}"}")
-                                    Text(installer.state.message)
-                                    if (installer.state.busy) {
-                                        val progress = installer.state.progress
-                                        if (progress == null) LinearProgressIndicator(Modifier.fillMaxWidth())
-                                        else LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-                                        OutlinedButton(onClick = { installer.cancel() }) { Text("Cancel installation") }
-                                    } else if (!installer.state.installed) {
-                                        Text("Download Ubuntu Base from Ubuntu's official server. Requires internet and at least 1.5 GiB free space.")
-                                        Button(enabled = !running, onClick = { installer.install() }) { Text("Download & install Ubuntu") }
-                                    } else {
-                                        Button(enabled = ready && !running, onClick = { tab = 0; startSession(true) }) { Text("Launch Linux") }
-                                    }
-                                    Text("Rootfs: ${rootfs.absolutePath}")
-                                    Text("Proroot by coderred · unmodified v1.2.8 binaries. Ubuntu Base is downloaded separately.")
-                                    var showLicense by remember { mutableStateOf(false) }
-                                    TextButton(onClick = { showLicense = true }) { Text("Proroot license") }
-                                    if (showLicense) {
-                                        AlertDialog(onDismissRequest = { showLicense = false }, title = { Text("Proroot license") },
-                                            text = { Text(remember { assets.open("licenses/proroot-LICENSE.txt").bufferedReader().use { it.readText() } }, modifier = Modifier.verticalScroll(rememberScrollState())) },
-                                            confirmButton = { TextButton(onClick = { showLicense = false }) { Text("Close") } })
-                                    }
-                                    Text("Prototype targets SDK 28 for rootfs execution compatibility. Vulkan/WSI is not connected yet.")
+                        }
+                    }
+                    if (!fullscreen) {
+                        ProrootShell(
+                            screen = screen, installer = installer, running = running, dark = dark, fontSize = fontSize,
+                            startTerminal = preferences.getBoolean("startTerminal", false),
+                            desktop = preferences.getString("desktop", "XFCE") ?: "XFCE",
+                            runtimeAvailable = missingRuntime().isEmpty(),
+                            navigate = { if (it == "terminal") openTerminal() else screen = it },
+                            launch = { openTerminal() },
+                            setDark = { dark = it; preferences.edit().putBoolean("dark", it).apply() },
+                            setFont = { fontSize = it.coerceIn(10, 24); preferences.edit().putInt("fontSize", fontSize).apply() },
+                            setStartTerminal = { preferences.edit().putBoolean("startTerminal", it).apply() },
+                            selectDesktop = { preferences.edit().putString("desktop", it).apply() },
+                            hostShell = { openTerminal(host = true) },
+                            license = { assets.open("licenses/proroot-LICENSE.txt").bufferedReader().use { it.readText() } },
+                        )
+                    } else {
+                        Box(Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 6.dp)) {
+                            FilledTonalIconButton(onClick = { menu = true }, modifier = Modifier.size(40.dp), shape = CircleShape) {
+                                Text("⋮", style = MaterialTheme.typography.titleLarge)
+                            }
+                            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                DropdownMenuItem(text = { Text(if (sessionHost) "Android 셸 · $status" else "Ubuntu · $status") }, enabled = false, onClick = {})
+                                DropdownMenuItem(text = { Text("키보드 열기") }, onClick = { menu = false; showKeyboard() })
+                                DropdownMenuItem(text = { Text(if (keys) "보조 키 숨기기" else "Ctrl / 방향 키 표시") }, onClick = { keys = !keys; menu = false })
+                                DropdownMenuItem(text = { Text("글자 크게") }, onClick = { fontSize = (fontSize + 1).coerceAtMost(24); preferences.edit().putInt("fontSize", fontSize).apply() })
+                                DropdownMenuItem(text = { Text("글자 작게") }, onClick = { fontSize = (fontSize - 1).coerceAtLeast(10); preferences.edit().putInt("fontSize", fontSize).apply() })
+                                DropdownMenuItem(text = { Text(if (running) "세션 정지" else "세션 다시 실행") }, onClick = { menu = false; if (running) stopSession() else openTerminal(desiredHost) })
+                                DropdownMenuItem(text = { Text("홈으로 · 세션 유지") }, onClick = { menu = false; screen = "home" })
+                            }
+                        }
+                        if (!running && !pendingLaunch) {
+                            Surface(Modifier.align(Alignment.BottomCenter).padding(20.dp).navigationBarsPadding(), shape = MaterialTheme.shapes.large, tonalElevation = 2.dp) {
+                                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(status, modifier = Modifier.weight(1f))
+                                    TextButton(onClick = { openTerminal(desiredHost) }) { Text("다시 실행") }
                                 }
                             }
                         }
@@ -111,9 +130,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun updateSystemBars(fullscreen: Boolean) {
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.isAppearanceLightStatusBars = !dark
+        controller.isAppearanceLightNavigationBars = !dark
+        window.statusBarColor = AndroidColor.TRANSPARENT
+        window.navigationBarColor = AndroidColor.TRANSPARENT
+        if (fullscreen) controller.hide(WindowInsetsCompat.Type.systemBars()) else controller.show(WindowInsetsCompat.Type.systemBars())
+    }
+
+    private fun openTerminal(host: Boolean = false) {
+        if (!host && (!installer.state.installed || installer.state.busy)) { screen = "install"; return }
+        if (running && sessionHost != host) stopSession()
+        desiredHost = host
+        pendingLaunch = !running
+        screen = "terminal"
+        // The view's next fit reports the real fullscreen size before spawning the shell.
+        terminal?.post { terminal?.evaluateJavascript("window.fitTerminal?.()", null) }
+    }
+
     @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
     private fun makeTerminal(): WebView = WebView(this).apply {
-        setBackgroundColor(Color.rgb(16, 21, 29))
         settings.javaScriptEnabled = true
         settings.allowFileAccess = false
         settings.allowContentAccess = false
@@ -121,20 +159,27 @@ class MainActivity : ComponentActivity() {
         addJavascriptInterface(object {
             @JavascriptInterface fun ready() = runOnUiThread {
                 ready = true
-                line("Ready. Install Ubuntu from the Container tab, then launch Linux.")
+                terminal?.evaluateJavascript("window.configureTerminal?.($fontSize,$dark);window.fitTerminal?.()", null)
             }
             @JavascriptInterface fun input(data: String) = runOnUiThread { session?.write(data.toByteArray(Charsets.UTF_8)) }
             @JavascriptInterface fun resize(c: Int, r: Int) = runOnUiThread {
-                cols = c.coerceIn(1,1000); rows = r.coerceIn(1,1000); session?.resize(cols, rows)
+                cols = c.coerceIn(1, 1000); rows = r.coerceIn(1, 1000)
+                session?.resize(cols, rows)
+            }
+            @JavascriptInterface fun viewportReady(c: Int, r: Int) = runOnUiThread {
+                if (screen == "terminal" && c > 2 && r > 2 && pendingLaunch && ready) {
+                    cols = c; rows = r
+                    pendingLaunch = false
+                    startSession()
+                }
             }
         }, "Host")
         webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?) = true
             override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): android.webkit.WebResourceResponse? {
                 val url = request?.url ?: return null
-                if (url.scheme == "https" && url.host == "app.local") {
-                    val name = url.path?.removePrefix("/") ?: ""
-                    if (name !in listOf("index.html", "xterm.js", "xterm.css", "addon-fit.js")) return android.webkit.WebResourceResponse("text/plain", "UTF-8", null)
+                val name = url.path?.removePrefix("/") ?: ""
+                if (url.scheme == "https" && url.host == "app.local" && name in listOf("index.html", "xterm.js", "xterm.css", "addon-fit.js")) {
                     val mime = when { name.endsWith(".js") -> "application/javascript"; name.endsWith(".css") -> "text/css"; else -> "text/html" }
                     return android.webkit.WebResourceResponse(mime, "UTF-8", assets.open("terminal/$name"))
                 }
@@ -144,28 +189,32 @@ class MainActivity : ComponentActivity() {
         terminal = this
         loadUrl("https://app.local/index.html")
     }
-    private fun line(text: String) { terminal?.evaluateJavascript("window.statusLine(${JSONObject.quote(text)})", null) }
-    private fun startSession(linux: Boolean) {
+    private fun line(text: String) { terminal?.evaluateJavascript("window.statusLine?.(${JSONObject.quote(text)})", null) }
+    private fun startSession() {
         if (running) return
-        if (linux && (missingRuntime().isNotEmpty() || !installer.state.installed || installer.state.busy)) {
-            line("Linux unavailable. Download and install Ubuntu from the Container tab."); return
-        }
+        if (!desiredHost && missingRuntime().isNotEmpty()) { status = "Proroot 파일이 없습니다"; line(status); return }
         val token = ++generation
         try {
-            val newSession = PtySession(if (linux) launcher.absolutePath else "", rootfs.absolutePath, File(filesDir,"tmp").absolutePath,
+            session = PtySession(if (desiredHost) "" else launcher.absolutePath, rootfs.absolutePath, File(filesDir, "tmp").absolutePath,
                 output = { bytes ->
                     val encoded = Base64.encodeToString(bytes, Base64.NO_WRAP)
                     runOnUiThread { if (generation == token) terminal?.evaluateJavascript("window.receive('$encoded')", null) }
                 }, exited = { code -> runOnUiThread {
-                    if (generation == token) { status = "Exited ($code)"; running = false; session?.close(); session = null; line(status) }
+                    if (generation == token) { status = "종료 ($code)"; running = false; session?.close(); session = null; line(status) }
                 } })
-            session = newSession
-            newSession.resize(cols, rows)
-            running = true; status = if (linux) "Linux running" else "Android host shell running"
-        } catch (error: Exception) { status = "Start failed: ${error.message}"; line(status) }
+            session?.resize(cols, rows)
+            sessionHost = desiredHost
+            running = true
+            status = "실행 중"
+        } catch (error: Exception) { status = "실행 실패: ${error.message}"; line(status) }
+    }
+    private fun showKeyboard() {
+        terminal?.requestFocus()
+        terminal?.evaluateJavascript("terminal.focus()", null)
+        terminal?.post { (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(terminal, InputMethodManager.SHOW_IMPLICIT) }
     }
     private fun stopSession() {
-        generation++; session?.close(); session = null; running = false; status = "Stopped"; line(status)
+        pendingLaunch = false; generation++; session?.close(); session = null; running = false; status = "세션 정지됨"; line(status)
     }
     override fun onDestroy() {
         generation++; session?.close(); session = null
