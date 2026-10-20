@@ -2,8 +2,10 @@ package dev.proroot.app
 
 import android.annotation.SuppressLint
 import android.graphics.Color as AndroidColor
+import android.os.Build
 import android.os.Bundle
 import android.util.Base64
+import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
@@ -60,8 +62,8 @@ class MainActivity : ComponentActivity() {
         dark = preferences.getBoolean("dark", false)
         if (preferences.getBoolean("startTerminal", false) && installer.state.installed) openTerminal()
         setContent {
-            val colors = if (dark) darkColorScheme(primary = Color(0xFFB4DFC9), background = Color(0xFF15211B), surface = Color(0xFF1D2C24))
-                else lightColorScheme(primary = Color(0xFF174B3A), background = Color(0xFFF7F9F6), surface = Color.White, onSurface = Color(0xFF26332E))
+            val colors = if (dark) darkColorScheme(primary = Color(0xFFB4DFC9), background = Color(0xFF15211B), surface = Color(0xFF1D2C24), outlineVariant = Color(0xFF345041), onSurfaceVariant = Color(0xFFABC0B2), secondaryContainer = Color(0xFF294B39), onSecondaryContainer = Color(0xFFB4DFC9))
+                else lightColorScheme(primary = Color(0xFF174B3A), background = Color(0xFFF7F9F6), surface = Color.White, onSurface = Color(0xFF26332E), outlineVariant = Color(0xFFDBE4DD), onSurfaceVariant = Color(0xFF6F7C76), secondaryContainer = Color(0xFFDEF3E7), onSecondaryContainer = Color(0xFF174B3A))
             MaterialTheme(colorScheme = colors) {
                 val fullscreen = screen == "terminal"
                 var menu by remember { mutableStateOf(false) }
@@ -131,6 +133,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateSystemBars(fullscreen: Boolean) {
+        if (Build.VERSION.SDK_INT >= 28) {
+            window.attributes = window.attributes.apply { layoutInDisplayCutoutMode = if (fullscreen) WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES else WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT }
+        }
         val controller = WindowInsetsControllerCompat(window, window.decorView)
         controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         controller.isAppearanceLightStatusBars = !dark
