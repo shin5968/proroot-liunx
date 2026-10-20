@@ -218,6 +218,9 @@ class MainActivity : ComponentActivity() {
         if (!desiredHost && missingRuntime().isNotEmpty()) { status = "Proroot 파일이 없습니다"; line(status); return }
         val token = ++generation
         try {
+            if (!desiredHost) {
+                File(rootfs, "etc/proroot.bashrc").writeText(assets.open("proroot.bashrc").bufferedReader().use { it.readText() })
+            }
             session = PtySession(if (desiredHost) "" else launcher.absolutePath, rootfs.absolutePath, File(filesDir, "tmp").absolutePath,
                 output = { bytes ->
                     val encoded = Base64.encodeToString(bytes, Base64.NO_WRAP)

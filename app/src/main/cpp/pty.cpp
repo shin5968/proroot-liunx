@@ -47,8 +47,9 @@ Java_dev_proroot_app_NativePty_start(JNIEnv* env, jobject, jstring launcherArg, 
             execve(shell, args, environment);
         } else {
             char r[] = "-r", zero[] = "-0", links[] = "--link2symlink", w[] = "-w";
-            char dir[] = "/root", shell[] = "/bin/sh", interactive[] = "-i";
-            char* args[] = {launcher.data(), r, root.data(), zero, links, w, dir, shell, interactive, nullptr};
+            char dir[] = "/root", shell[] = "/bin/bash", rcOption[] = "--rcfile";
+            char rcFile[] = "/etc/proroot.bashrc", interactive[] = "-i";
+            char* args[] = {launcher.data(), r, root.data(), zero, links, w, dir, shell, rcOption, rcFile, interactive, nullptr};
             execve(launcher.c_str(), args, environment);
         }
         constexpr char message[] = "\r\nexecve failed; inspect runtime files and Android execution policy.\r\n";
