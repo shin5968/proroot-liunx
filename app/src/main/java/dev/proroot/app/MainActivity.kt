@@ -1,6 +1,8 @@
 package dev.proroot.app
 
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.graphics.Color as AndroidColor
 import android.os.Build
 import android.os.Bundle
@@ -67,25 +69,33 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = colors) {
                 val fullscreen = screen == "terminal"
                 var menu by remember { mutableStateOf(false) }
-                var keys by remember { mutableStateOf(false) }
+                var keys by remember { mutableStateOf(true) }
                 LaunchedEffect(fullscreen, dark) { updateSystemBars(fullscreen) }
                 BackHandler(enabled = screen != "home") { pendingLaunch = false; screen = "home" }
                 Box(Modifier.fillMaxSize().background(colors.background)) {
                     // This one WebView survives navigation; PTY output keeps flowing while hidden.
                     Column(if (fullscreen) Modifier.fillMaxSize().imePadding() else Modifier.size(0.dp)) {
                         AndroidView(factory = { makeTerminal() }, modifier = Modifier.weight(1f).fillMaxWidth(), update = { view ->
-                            view.setBackgroundColor(if (dark) AndroidColor.rgb(16, 25, 20) else AndroidColor.rgb(247, 249, 246))
+                            view.setBackgroundColor(AndroidColor.BLACK)
                             if (ready) view.post {
                                 view.evaluateJavascript("window.configureTerminal?.($fontSize,$dark)", null)
                                 if (fullscreen) view.evaluateJavascript("window.fitTerminal?.()", null)
                             }
                         })
                         if (fullscreen && keys) {
-                            Row(Modifier.fillMaxWidth().background(colors.surface).navigationBarsPadding(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                                listOf("Ctrl-C" to "\u0003", "Esc" to "\u001b", "Tab" to "\t", "↑" to "\u001b[A", "↓" to "\u001b[B", "←" to "\u001b[D", "→" to "\u001b[C").forEach { (label, value) ->
-                                    TextButton(onClick = { session?.write(value.toByteArray()) }, contentPadding = PaddingValues(4.dp), modifier = Modifier.weight(1f).height(48.dp)) { Text(label, maxLines = 1) }
+                            AndroidView(factory = { context ->
+                                android.webkit.WebView(context).apply {
+                                    settings.javaScriptEnabled = true
+                                    setBackgroundColor(AndroidColor.rgb(23, 23, 23))
+                                    addJavascriptInterface(object {
+                                        @JavascriptInterface fun key(value: String) = runOnUiThread {
+                                            terminal?.evaluateJavascript("window.extraKey(" + JSONObject.quote(value) + ")", null)
+                                        }
+                                    }, "Keys")
+                                    loadDataWithBaseURL("https://keys.local", assets.open("terminal/keys.html").bufferedReader().use { it.readText() }, "text/html", "UTF-8", null)
                                 }
-                            }
+                            }, modifier = Modifier.fillMaxWidth().height(88.dp))
+
                         }
                     }
                     if (!fullscreen) {
@@ -138,8 +148,8 @@ class MainActivity : ComponentActivity() {
         }
         val controller = WindowInsetsControllerCompat(window, window.decorView)
         controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        controller.isAppearanceLightStatusBars = !dark
-        controller.isAppearanceLightNavigationBars = !dark
+        controller.isAppearanceLightStatusBars = !fullscreen && !dark
+        controller.isAppearanceLightNavigationBars = !fullscreen && !dark
         window.statusBarColor = AndroidColor.TRANSPARENT
         window.navigationBarColor = AndroidColor.TRANSPARENT
         if (fullscreen) controller.hide(WindowInsetsCompat.Type.systemBars()) else controller.show(WindowInsetsCompat.Type.systemBars())
@@ -165,6 +175,14 @@ class MainActivity : ComponentActivity() {
             @JavascriptInterface fun ready() = runOnUiThread {
                 ready = true
                 terminal?.evaluateJavascript("window.configureTerminal?.($fontSize,$dark);window.fitTerminal?.()", null)
+            }
+            @JavascriptInterface fun copySelection(text: String) = runOnUiThread {
+                (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("터미널", text))
+            }
+            @JavascriptInterface fun pasteClipboard() = runOnUiThread {
+                val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                val text = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this@MainActivity)?.toString() ?: return@runOnUiThread
+                terminal?.evaluateJavascript("window.pasteText(" + JSONObject.quote(text) + ")", null)
             }
             @JavascriptInterface fun input(data: String) = runOnUiThread { session?.write(data.toByteArray(Charsets.UTF_8)) }
             @JavascriptInterface fun resize(c: Int, r: Int) = runOnUiThread {

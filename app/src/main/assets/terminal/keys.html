@@ -1,0 +1,8 @@
+<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<style>body{margin:0;background:#171717;display:grid;grid-template-columns:repeat(7,1fr);height:88px}button{border:0;background:transparent;color:#eee;font:12px sans-serif;touch-action:manipulation}button.active{background:#344639;color:#86efac}</style>
+<script>
+for(const label of ['ESC','/','-','HOME','↑','END','PGUP','TAB','CTRL','ALT','←','↓','→','PGDN']){
+const b=document.createElement('button');b.textContent=label;
+b.onclick=()=>{if(label==='CTRL'||label==='ALT')b.classList.toggle('active');Keys.key(label);};document.body.append(b);
+}
+</script>

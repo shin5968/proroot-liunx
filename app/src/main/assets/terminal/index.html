@@ -1,13 +1,66 @@
-<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="stylesheet" href="xterm.css"><style>html,body{margin:0;width:100%;height:100vh;background:#f7f9f6;overflow:hidden}#terminal{position:fixed;inset:4px 4px 0 8px}</style></head><body><div id="terminal"></div><script src="xterm.js"></script><script src="addon-fit.js"></script><script>
-const lightTheme={background:'#f7f9f6',foreground:'#22352e',cursor:'#174b3a',selectionBackground:'#c4e8d4',black:'#26332e',red:'#a9413c',green:'#174b3a',yellow:'#84602d',blue:'#285f9a',magenta:'#815d91',cyan:'#2c7d72',white:'#e4ebe5',brightBlack:'#6f7c76'};
-const darkTheme={background:'#101914',foreground:'#dce9e0',cursor:'#b4dfc9',selectionBackground:'#345a46'};
-const terminal=new Terminal({cursorBlink:true,fontSize:14,scrollback:5000,theme:lightTheme});
+<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="stylesheet" href="xterm.css"><style>
+html,body{margin:0;width:100%;height:100vh;background:#000;overflow:hidden}
+#terminal{position:fixed;inset:4px 4px 0 8px}
+#tools{position:fixed;z-index:10;display:none;background:#303030;border-radius:8px;padding:4px;box-shadow:0 2px 12px #000}
+#tools button{background:none;border:0;color:white;padding:12px;font-size:14px}
+.handle{position:fixed;z-index:9;width:24px;height:28px;background:#86efac;border-radius:0 50% 50% 50%;touch-action:none;display:none}
+</style></head><body><div id="terminal"></div>
+<div id="tools"><button id="copy">복사</button><button id="paste">붙여넣기</button><button id="all">전체 선택</button><button id="close">닫기</button></div>
+<div id="start" class="handle"></div><div id="end" class="handle"></div>
+<script src="xterm.js"></script><script src="addon-fit.js"></script><script>
+const terminal=new Terminal({cursorBlink:true,fontSize:14,scrollback:5000,theme:{background:'#000000',foreground:'#eeeeee',cursor:'#ffffff',selectionBackground:'#45634f',selectionInactiveBackground:'#45634f'}});
 const fit=new FitAddon.FitAddon();terminal.loadAddon(fit);terminal.open(document.getElementById('terminal'));
-terminal.onData(data=>Host.input(data));terminal.onResize(s=>Host.resize(s.cols,s.rows));
+let ctrl=false,alt=false;
+function send(data){
+ if(ctrl&&data.length===1){const n=data.toUpperCase().charCodeAt(0);if(n>=64&&n<=95)data=String.fromCharCode(n-64);else if(data===' ')data='\x00';}
+ if(alt)data='\x1b'+data;
+ Host.input(data);
+}
+window.extraKey=label=>{
+ if(label==='CTRL'){ctrl=!ctrl;return;}if(label==='ALT'){alt=!alt;return;}
+ const keys={ESC:'\x1b',TAB:'\t',HOME:'\x1b[H',END:'\x1b[F','↑':'\x1b[A','↓':'\x1b[B','←':'\x1b[D','→':'\x1b[C',PGUP:'\x1b[5~',PGDN:'\x1b[6~'};
+ send(keys[label]||label);
+};
+terminal.onData(send);terminal.onResize(s=>Host.resize(s.cols,s.rows));
 window.receive=data=>terminal.write(Uint8Array.from(atob(data),c=>c.charCodeAt(0)));
 window.statusLine=text=>terminal.writeln('\r\n'+text);
-window.fitTerminal=()=>{const r=document.getElementById('terminal').getBoundingClientRect();if(r.width<20||r.height<20)return;fit.fit();Host.viewportReady(terminal.cols,terminal.rows);};
-window.configureTerminal=(fontSize,dark)=>{terminal.options.fontSize=fontSize;terminal.options.theme=dark?darkTheme:lightTheme;document.body.style.background=dark?'#101914':'#f7f9f6';window.fitTerminal();};
-new ResizeObserver(()=>window.fitTerminal()).observe(document.getElementById('terminal'));
+window.fitTerminal=()=>{const r=document.getElementById('terminal').getBoundingClientRect();if(r.width<20||r.height<20)return;fit.fit();hideSelection();Host.viewportReady(terminal.cols,terminal.rows);};
+window.configureTerminal=(fontSize)=>{if(terminal.options.fontSize!==fontSize){terminal.options.fontSize=fontSize;window.fitTerminal();}};
+const tools=document.getElementById('tools'),first=document.getElementById('start'),last=document.getElementById('end');
+let anchor=0,extent=0,selecting=false;
+function geometry(){const r=document.querySelector('.xterm-screen').getBoundingClientRect();return {r,w:r.width/terminal.cols,h:r.height/terminal.rows};}
+function cell(x,y){const {r,w,h}=geometry();return (terminal.buffer.active.viewportY+Math.max(0,Math.min(terminal.rows-1,Math.floor((y-r.top)/h))))*terminal.cols+Math.max(0,Math.min(terminal.cols-1,Math.floor((x-r.left)/w)));}
+function hideSelection(){selecting=false;tools.style.display=first.style.display=last.style.display='none';terminal.clearSelection();}
+function renderSelection(){
+ const a=Math.min(anchor,extent),b=Math.max(anchor,extent);
+ terminal.select(a%terminal.cols,Math.floor(a/terminal.cols),Math.max(1,b-a));
+ const {r,w,h}=geometry(),v=terminal.buffer.active.viewportY;
+ for(const [el,n] of [[first,a],[last,b]]){const y=Math.floor(n/terminal.cols)-v;el.style.display=y>=0&&y<terminal.rows?'block':'none';el.style.left=Math.max(0,Math.min(innerWidth-24,r.left+(n%terminal.cols)*w-12))+'px';el.style.top=Math.min(innerHeight-28,r.top+(y+1)*h)+'px';}
+ tools.style.display='block';tools.style.left='8px';tools.style.top=Math.max(4,Math.min(innerHeight-54,r.top+(Math.floor(a/terminal.cols)-v)*h-55))+'px';
+}
+function longPress(x,y){
+ selecting=true;anchor=cell(x,y);extent=anchor+1;
+ const row=Math.floor(anchor/terminal.cols),col=anchor%terminal.cols,line=terminal.buffer.active.getLine(row);
+ const word=c=>{const ch=line?.getCell(c)?.getChars()||' ';return !/\s/.test(ch);};
+ if(word(col)){let a=col,b=col+1;while(a>0&&word(a-1))a--;while(b<terminal.cols&&word(b))b++;anchor=row*terminal.cols+a;extent=row*terminal.cols+b;}
+ renderSelection();
+}
+let timer,touch;
+const area=document.getElementById('terminal');
+area.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;const t=e.touches[0];touch={x:t.clientX,y:t.clientY};timer=setTimeout(()=>{timer=null;longPress(touch.x,touch.y);},500);},{passive:true});
+area.addEventListener('touchmove',e=>{if(touch&&Math.hypot(e.touches[0].clientX-touch.x,e.touches[0].clientY-touch.y)>10){clearTimeout(timer);timer=null;}},{passive:true});
+area.addEventListener('touchend',e=>{if(selecting&&timer===null){e.preventDefault();e.stopPropagation();}clearTimeout(timer);touch=null;},{passive:false,capture:true});
+area.addEventListener('contextmenu',e=>{e.preventDefault();if(!selecting)longPress(e.clientX,e.clientY);});
+for(const [el,isStart] of [[first,true],[last,false]]){
+ el.addEventListener('pointerdown',e=>{el.setPointerCapture(e.pointerId);e.preventDefault();});
+ el.addEventListener('pointermove',e=>{if(!el.hasPointerCapture(e.pointerId))return;const n=cell(e.clientX,e.clientY-16);if(isStart)anchor=n;else extent=n+1;renderSelection();});
+}
+document.getElementById('copy').onclick=()=>{Host.copySelection(terminal.getSelection());hideSelection();};
+document.getElementById('paste').onclick=()=>Host.pasteClipboard();
+document.getElementById('all').onclick=()=>{anchor=0;extent=terminal.buffer.active.length*terminal.cols;renderSelection();};
+document.getElementById('close').onclick=hideSelection;
+window.pasteText=text=>{hideSelection();terminal.paste(text);terminal.focus();};
+terminal.onScroll(()=>{if(selecting)renderSelection();});
+new ResizeObserver(()=>window.fitTerminal()).observe(area);
 window.addEventListener('resize',window.fitTerminal);Host.ready();
 </script></body></html>
