@@ -24,7 +24,7 @@ window.extraKey=label=>{
 terminal.onData(send);terminal.onResize(s=>Host.resize(s.cols,s.rows));
 window.receive=data=>terminal.write(Uint8Array.from(atob(data),c=>c.charCodeAt(0)));
 window.statusLine=text=>terminal.writeln('\r\n'+text);
-window.fitTerminal=()=>{const r=document.getElementById('terminal').getBoundingClientRect();if(r.width<20||r.height<20)return;fit.fit();hideSelection();Host.viewportReady(terminal.cols,terminal.rows);};
+window.fitTerminal=()=>{const r=document.getElementById('terminal').getBoundingClientRect();if(r.width<20||r.height<20)return;fit.fit();if(selecting)renderSelection();Host.viewportReady(terminal.cols,terminal.rows);};
 window.configureTerminal=(fontSize)=>{if(terminal.options.fontSize!==fontSize){terminal.options.fontSize=fontSize;window.fitTerminal();}};
 const tools=document.getElementById('tools'),first=document.getElementById('start'),last=document.getElementById('end');
 let anchor=0,extent=0,selecting=false;
@@ -36,7 +36,7 @@ function renderSelection(){
  terminal.select(a%terminal.cols,Math.floor(a/terminal.cols),Math.max(1,b-a));
  const {r,w,h}=geometry(),v=terminal.buffer.active.viewportY;
  for(const [el,n] of [[first,a],[last,b]]){const y=Math.floor(n/terminal.cols)-v;el.style.display=y>=0&&y<terminal.rows?'block':'none';el.style.left=Math.max(0,Math.min(innerWidth-24,r.left+(n%terminal.cols)*w-12))+'px';el.style.top=Math.min(innerHeight-28,r.top+(y+1)*h)+'px';}
- tools.style.display='block';tools.style.left='8px';tools.style.top=Math.max(4,Math.min(innerHeight-54,r.top+(Math.floor(a/terminal.cols)-v)*h-55))+'px';
+ tools.style.display='block';tools.style.left='8px';const top=r.top+(Math.floor(a/terminal.cols)-v)*h-55;tools.style.top=Math.min(innerHeight-54,top<4?top+55+h+32:top)+'px';
 }
 function longPress(x,y){
  selecting=true;anchor=cell(x,y);extent=anchor+1;
@@ -50,6 +50,7 @@ const area=document.getElementById('terminal');
 area.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;const t=e.touches[0];touch={x:t.clientX,y:t.clientY};timer=setTimeout(()=>{timer=null;longPress(touch.x,touch.y);},500);},{passive:true});
 area.addEventListener('touchmove',e=>{if(touch&&Math.hypot(e.touches[0].clientX-touch.x,e.touches[0].clientY-touch.y)>10){clearTimeout(timer);timer=null;}},{passive:true});
 area.addEventListener('touchend',e=>{if(selecting&&timer===null){e.preventDefault();e.stopPropagation();}clearTimeout(timer);touch=null;},{passive:false,capture:true});
+for(const type of ['mousedown','mouseup','click'])area.addEventListener(type,e=>{if(selecting){e.preventDefault();e.stopImmediatePropagation();}},true);
 area.addEventListener('contextmenu',e=>{e.preventDefault();if(!selecting)longPress(e.clientX,e.clientY);});
 for(const [el,isStart] of [[first,true],[last,false]]){
  el.addEventListener('pointerdown',e=>{el.setPointerCapture(e.pointerId);e.preventDefault();});
@@ -64,3 +65,5 @@ terminal.onScroll(()=>{if(selecting)renderSelection();});
 new ResizeObserver(()=>window.fitTerminal()).observe(area);
 window.addEventListener('resize',window.fitTerminal);Host.ready();
 </script></body></html>
+
+
