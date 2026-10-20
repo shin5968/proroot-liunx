@@ -6,10 +6,10 @@ ARM64 Android host with Compose, offline xterm.js, native PTY, bundled Proroot a
 
 1. GitHub → Actions → Android APK → successful run → Artifacts → `proroot-linux-arm64-debug`.
 2. Unzip and install the APK on an ARM64 Android 8+ device.
-3. Open **Container → Download & install Ubuntu**. Keep the app open during installation. Internet and at least 1.5 GiB free space are required.
-4. After verification and extraction, press **Launch Linux**. Host shell remains available to test the Android PTY independently.
+3. Open **홈 → Ubuntu 설치하고 시작** (or the Ubuntu container card). Keep the app open during installation. Internet and at least 1.5 GiB free space are required.
+4. After verification and extraction, press **터미널 시작**. The terminal uses the full screen with system bars and app navigation hidden. Tap **⋮** for keyboard, optional Ctrl/arrow keys, font sizing, stop/restart and returning home while keeping the session. Android diagnostic shell is in Settings.
 
-The APK includes all five unmodified Proroot v1.2.8 libraries. CI fetches them from the official release and checks pinned SHA-256 values, then verifies the APK contains the identical bytes. Binaries are not redistributed as standalone repository files. The license is bundled in assets and available in the Container tab.
+The APK includes all five unmodified Proroot v1.2.8 libraries. CI fetches them from the official release and checks pinned SHA-256 values, then verifies the APK contains the identical bytes. Binaries are not redistributed as standalone repository files. The license is bundled in assets and available in Settings.
 
 Ubuntu Base 24.04.5 ARM64 is downloaded separately from the official Ubuntu server:
 https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.5-base-arm64.tar.gz
@@ -31,7 +31,7 @@ GitHub Actions also tests extraction of the actual pinned Ubuntu archive, malici
 
 ## Current scope
 
-Terminal input/output/resize, Ctrl-C/Tab/Esc, session termination, container install/progress/cancel/retry, Proroot launcher integration and GUI SurfaceView placeholder are implemented. Vulkan ICD, libhybris, WSI, audio, multiple containers and a foreground service are not implemented. Closing the activity stops terminal sessions; downloads survive activity recreation but not process death.
+Terminal input/output/resize, Ctrl-C/Tab/Esc, session termination, container install/progress/cancel/retry, Proroot launcher integration and the mint mobile UI are implemented. Desktop selection only saves a preference; GUI rendering, Vulkan ICD, libhybris, WSI, audio, multiple containers and a foreground service are not implemented. Returning home keeps the PTY alive. Destroying the activity stops terminal sessions; downloads survive activity recreation but not process death.
 
 SDK 28 is intentional for prototype rootfs execution compatibility. The Play Store target requirement remains a lint warning, and this APK is for direct installation. Raising the target requires validating a different app-data execution route. Proroot fake root does not grant device privileges; guest apps run with the host app UID. No zero-overhead performance result has been measured.
 
