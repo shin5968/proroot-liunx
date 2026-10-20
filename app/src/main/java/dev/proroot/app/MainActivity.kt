@@ -214,9 +214,19 @@ class MainActivity : ComponentActivity() {
         } catch (error: Exception) { status = "실행 실패: ${error.message}"; line(status) }
     }
     private fun showKeyboard() {
-        terminal?.requestFocus()
-        terminal?.evaluateJavascript("terminal.focus()", null)
-        terminal?.post { (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(terminal, InputMethodManager.SHOW_IMPLICIT) }
+        val view = terminal ?: return
+        // DropdownMenu owns a separate window until Compose dismisses it.
+        // Request the IME after that window releases focus, not inside its click event.
+        view.postDelayed({
+            if (screen != "terminal" || isDestroyed) return@postDelayed
+            view.requestFocus()
+            view.evaluateJavascript("terminal.focus()") {
+                view.post {
+                    (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+                    WindowInsetsControllerCompat(window, view).show(WindowInsetsCompat.Type.ime())
+                }
+            }
+        }, 200)
     }
     private fun stopSession() {
         pendingLaunch = false; generation++; session?.close(); session = null; running = false; status = "세션 정지됨"; line(status)
