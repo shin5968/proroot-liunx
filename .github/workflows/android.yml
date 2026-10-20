@@ -67,3 +67,14 @@ jobs:
             app/build/reports/tests/testDebugUnitTest/
             app/build/test-results/testDebugUnitTest/
           if-no-files-found: ignore
+
+  terminal-touch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix scripts/terminal-tests
+      - run: npx --prefix scripts/terminal-tests playwright install --with-deps chromium
+      - run: npm test --prefix scripts/terminal-tests

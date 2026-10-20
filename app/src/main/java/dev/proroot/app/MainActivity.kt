@@ -44,6 +44,8 @@ class MainActivity : ComponentActivity() {
     private var status by mutableStateOf("세션 대기 중")
     private var fontSize by mutableIntStateOf(14)
     private var dark by mutableStateOf(false)
+    private var ctrlPressed by mutableStateOf(false)
+    private var altPressed by mutableStateOf(false)
     private var generation = 0
     private var cols = 80
     private var rows = 24
@@ -83,18 +85,24 @@ class MainActivity : ComponentActivity() {
                             }
                         })
                         if (fullscreen && keys) {
-                            AndroidView(factory = { context ->
-                                android.webkit.WebView(context).apply {
-                                    settings.javaScriptEnabled = true
-                                    setBackgroundColor(AndroidColor.rgb(23, 23, 23))
-                                    addJavascriptInterface(object {
-                                        @JavascriptInterface fun key(value: String) = runOnUiThread {
-                                            terminal?.evaluateJavascript("window.extraKey(" + JSONObject.quote(value) + ")", null)
+                            Column(Modifier.fillMaxWidth().background(Color(0xFF171717))) {
+                                listOf(listOf("ESC", "/", "-", "HOME", "↑", "END", "PGUP"),
+                                    listOf("TAB", "CTRL", "ALT", "←", "↓", "→", "PGDN")).forEach { labels ->
+                                    Row(Modifier.fillMaxWidth()) {
+                                        labels.forEach { label ->
+                                            val active = (label == "CTRL" && ctrlPressed) || (label == "ALT" && altPressed)
+                                            TextButton(
+                                                onClick = { terminal?.evaluateJavascript("window.extraKey(" + JSONObject.quote(label) + ")", null) },
+                                                modifier = Modifier.weight(1f).height(44.dp),
+                                                contentPadding = PaddingValues(0.dp),
+                                                colors = ButtonDefaults.textButtonColors(
+                                                    contentColor = if (active) Color(0xFF86EFAC) else Color(0xFFEEEEEE),
+                                                    containerColor = if (active) Color(0xFF344639) else Color.Transparent)
+                                            ) { Text(label, maxLines = 1, style = MaterialTheme.typography.labelMedium) }
                                         }
-                                    }, "Keys")
-                                    loadDataWithBaseURL("https://keys.local", assets.open("terminal/keys.html").bufferedReader().use { it.readText() }, "text/html", "UTF-8", null)
+                                    }
                                 }
-                            }, modifier = Modifier.fillMaxWidth().height(88.dp))
+                            }
 
                         }
                     }
@@ -175,6 +183,9 @@ class MainActivity : ComponentActivity() {
             @JavascriptInterface fun ready() = runOnUiThread {
                 ready = true
                 terminal?.evaluateJavascript("window.configureTerminal?.($fontSize,$dark);window.fitTerminal?.()", null)
+            }
+            @JavascriptInterface fun modifiersChanged(ctrl: Boolean, alt: Boolean) = runOnUiThread {
+                ctrlPressed = ctrl; altPressed = alt
             }
             @JavascriptInterface fun copySelection(text: String) = runOnUiThread {
                 (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("터미널", text))

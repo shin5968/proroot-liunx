@@ -1,6 +1,6 @@
 <!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="stylesheet" href="xterm.css"><style>
 html,body{margin:0;width:100%;height:100vh;background:#000;overflow:hidden}
-#terminal{position:fixed;inset:4px 4px 0 8px}
+#terminal{position:fixed;inset:4px 4px 0 8px;touch-action:none;-webkit-user-select:none;user-select:none}
 #tools{position:fixed;z-index:10;display:none;background:#303030;border-radius:8px;padding:4px;box-shadow:0 2px 12px #000}
 #tools button{background:none;border:0;color:white;padding:12px;font-size:14px}
 .handle{position:fixed;z-index:9;width:24px;height:28px;background:#86efac;border-radius:0 50% 50% 50%;touch-action:none;display:none}
@@ -10,18 +10,20 @@ html,body{margin:0;width:100%;height:100vh;background:#000;overflow:hidden}
 <script src="xterm.js"></script><script src="addon-fit.js"></script><script>
 const terminal=new Terminal({cursorBlink:true,fontSize:14,scrollback:5000,theme:{background:'#000000',foreground:'#eeeeee',cursor:'#ffffff',selectionBackground:'#45634f',selectionInactiveBackground:'#45634f'}});
 const fit=new FitAddon.FitAddon();terminal.loadAddon(fit);terminal.open(document.getElementById('terminal'));
-let ctrl=false,alt=false;
+let ctrl=false,alt=false,pasting=false;
 function send(data){
+ if(pasting){Host.input(data);return;}
+ hideSelection();
  if(ctrl&&data.length===1){const n=data.toUpperCase().charCodeAt(0);if(n>=64&&n<=95)data=String.fromCharCode(n-64);else if(data===' ')data='\x00';}
  if(alt)data='\x1b'+data;
  Host.input(data);
 }
 window.extraKey=label=>{
- if(label==='CTRL'){ctrl=!ctrl;return;}if(label==='ALT'){alt=!alt;return;}
+ if(label==='CTRL'){ctrl=!ctrl;Host.modifiersChanged(ctrl,alt);return;}if(label==='ALT'){alt=!alt;Host.modifiersChanged(ctrl,alt);return;}
  const keys={ESC:'\x1b',TAB:'\t',HOME:'\x1b[H',END:'\x1b[F','↑':'\x1b[A','↓':'\x1b[B','←':'\x1b[D','→':'\x1b[C',PGUP:'\x1b[5~',PGDN:'\x1b[6~'};
  send(keys[label]||label);
 };
-terminal.onData(send);terminal.onResize(s=>Host.resize(s.cols,s.rows));
+terminal.onData(send);terminal.onResize(s=>{hideSelection();Host.resize(s.cols,s.rows);});
 window.receive=data=>terminal.write(Uint8Array.from(atob(data),c=>c.charCodeAt(0)));
 window.statusLine=text=>terminal.writeln('\r\n'+text);
 window.fitTerminal=()=>{const r=document.getElementById('terminal').getBoundingClientRect();if(r.width<20||r.height<20)return;fit.fit();if(selecting)renderSelection();Host.viewportReady(terminal.cols,terminal.rows);};
@@ -45,22 +47,60 @@ function longPress(x,y){
  if(word(col)){let a=col,b=col+1;while(a>0&&word(a-1))a--;while(b<terminal.cols&&word(b))b++;anchor=row*terminal.cols+a;extent=row*terminal.cols+b;}
  renderSelection();
 }
-let timer,touch;
+// Own touch gestures so xterm's mouse selection and Android's contextmenu
+// cannot turn a scroll into a selection. Only a stationary hold selects text.
+let timer=null,touch=null,lastTouchTime=0;
 const area=document.getElementById('terminal');
-area.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;const t=e.touches[0];touch={x:t.clientX,y:t.clientY};timer=setTimeout(()=>{timer=null;longPress(touch.x,touch.y);},500);},{passive:true});
-area.addEventListener('touchmove',e=>{if(touch&&Math.hypot(e.touches[0].clientX-touch.x,e.touches[0].clientY-touch.y)>10){clearTimeout(timer);timer=null;}},{passive:true});
-area.addEventListener('touchend',e=>{if(selecting&&timer===null){e.preventDefault();e.stopPropagation();}clearTimeout(timer);touch=null;},{passive:false,capture:true});
-for(const type of ['mousedown','mouseup','click'])area.addEventListener(type,e=>{if(selecting){e.preventDefault();e.stopImmediatePropagation();}},true);
-area.addEventListener('contextmenu',e=>{e.preventDefault();if(!selecting)longPress(e.clientX,e.clientY);});
+function cancelHold(){clearTimeout(timer);timer=null;}
+function endGesture(){cancelHold();touch=null;lastTouchTime=Date.now();}
+area.addEventListener('touchstart',e=>{
+ e.preventDefault();e.stopImmediatePropagation();lastTouchTime=Date.now();cancelHold();
+ if(e.touches.length!==1){touch=null;return;}
+ const t=e.touches[0];
+ touch={x:t.clientX,y:t.clientY,lastY:t.clientY,remainder:0,moved:false,held:false,dismissed:selecting};
+ timer=setTimeout(()=>{
+  timer=null;if(!touch||touch.moved)return;
+  touch.held=true;longPress(touch.x,touch.y);
+ },500);
+},{passive:false,capture:true});
+area.addEventListener('touchmove',e=>{
+ e.preventDefault();e.stopImmediatePropagation();
+ if(!touch||e.touches.length!==1){endGesture();return;}
+ const t=e.touches[0];
+ if(Math.hypot(t.clientX-touch.x,t.clientY-touch.y)>8){
+  cancelHold();if(!touch.moved){touch.moved=true;hideSelection();}
+ }
+ if(touch.moved){
+  const h=geometry().h;
+  touch.remainder+=touch.lastY-t.clientY;
+  const lines=Math.trunc(touch.remainder/h);
+  if(lines){terminal.scrollLines(lines);touch.remainder-=lines*h;}
+ }
+ touch.lastY=t.clientY;
+},{passive:false,capture:true});
+area.addEventListener('touchend',e=>{
+ e.preventDefault();e.stopImmediatePropagation();
+ if(touch&&!touch.moved&&!touch.held){hideSelection();if(!touch.dismissed)terminal.focus();}
+ endGesture();
+},{passive:false,capture:true});
+area.addEventListener('touchcancel',e=>{e.stopImmediatePropagation();endGesture();},{capture:true});
+for(const type of ['mousedown','mouseup','click'])area.addEventListener(type,e=>{
+ if(Date.now()-lastTouchTime<800){e.preventDefault();e.stopImmediatePropagation();return;}
+ if(selecting){hideSelection();}
+},true);
+area.addEventListener('contextmenu',e=>{
+ e.preventDefault();e.stopImmediatePropagation();
+ if(Date.now()-lastTouchTime>1000&&e.button===2)longPress(e.clientX,e.clientY);
+});
 for(const [el,isStart] of [[first,true],[last,false]]){
  el.addEventListener('pointerdown',e=>{el.setPointerCapture(e.pointerId);e.preventDefault();});
- el.addEventListener('pointermove',e=>{if(!el.hasPointerCapture(e.pointerId))return;const n=cell(e.clientX,e.clientY-16);if(isStart)anchor=n;else extent=n+1;renderSelection();});
+ el.addEventListener('pointermove',e=>{if(!el.hasPointerCapture(e.pointerId))return;const n=cell(e.clientX,e.clientY-16);if(isStart)anchor=Math.min(n,extent-1);else extent=Math.max(n+1,anchor+1);renderSelection();});
 }
 document.getElementById('copy').onclick=()=>{Host.copySelection(terminal.getSelection());hideSelection();};
 document.getElementById('paste').onclick=()=>Host.pasteClipboard();
 document.getElementById('all').onclick=()=>{anchor=0;extent=terminal.buffer.active.length*terminal.cols;renderSelection();};
 document.getElementById('close').onclick=hideSelection;
-window.pasteText=text=>{hideSelection();terminal.paste(text);terminal.focus();};
+window.pasteText=text=>{hideSelection();pasting=true;try{terminal.paste(text);}finally{pasting=false;}terminal.focus();};
 terminal.onScroll(()=>{if(selecting)renderSelection();});
 new ResizeObserver(()=>window.fitTerminal()).observe(area);
 window.addEventListener('resize',window.fitTerminal);Host.ready();
