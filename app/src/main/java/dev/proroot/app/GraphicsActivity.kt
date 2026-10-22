@@ -58,10 +58,10 @@ class GraphicsActivity : ComponentActivity() {
                     AndroidView(factory = { context ->
                         SurfaceView(context).apply {
                             this.holder.addCallback(object : SurfaceHolder.Callback {
-                                override fun surfaceCreated(h: SurfaceHolder) { holder = h; probe(h.surface) }
+                                override fun surfaceCreated(h: SurfaceHolder) { this@GraphicsActivity.holder = h; probe(h.surface) }
                                 override fun surfaceChanged(h: SurfaceHolder, format: Int, width: Int, height: Int) {}
                                 override fun surfaceDestroyed(h: SurfaceHolder) {
-                                    holder = null
+                                    this@GraphicsActivity.holder = null
                                     if (!worker.isShutdown) worker.execute { NativeGraphics.release() }
                                 }
                             })
@@ -84,3 +84,4 @@ class GraphicsActivity : ComponentActivity() {
         super.onDestroy()
     }
 }
+
