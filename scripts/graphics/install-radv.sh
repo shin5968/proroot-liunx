@@ -4,6 +4,7 @@
 set -eu
 bundle=$(cd "${1:?usage: sh install-radv.sh /path/to/extracted-radv-glibc-arm64-artifact}" && pwd)
 test "$(uname -m)" = aarch64
+command -v unzip >/dev/null 2>&1 || { printf "%s\n" "Install unzip in the guest first: apt-get install unzip" >&2; exit 1; }
 test "$(cat "$bundle/SOURCE_COMMIT")" = d29b3afcecc542119bd548308a34e8dead6f5655
 (cd "$bundle" && sha256sum -c SHA256SUMS && sha256sum -c PATCH_SHA256)
 stage=$(mktemp -d)

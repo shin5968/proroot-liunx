@@ -31,7 +31,7 @@ GitHub Actions also tests extraction of the actual pinned Ubuntu archive, malici
 
 ## Current scope
 
-Terminal input/output/resize, Ctrl-C/Tab/Esc, session termination, container install/progress/cancel/retry, Proroot launcher integration and the mint mobile UI are implemented. Desktop selection only saves a preference; GUI rendering, Vulkan ICD, libhybris, WSI, audio, multiple containers and a foreground service are not implemented. Returning home keeps the PTY alive. Destroying the activity stops terminal sessions; downloads survive activity recreation but not process death.
+Terminal input/output/resize, Ctrl-C/Tab/Esc, session termination, container install/progress/cancel/retry, Proroot launcher integration and the mint mobile UI are implemented. A pinned, adapted radv-glibc build and Vulkan/AHB diagnostics are available; see [graphics setup and validation](docs/GRAPHICS_BACKEND.md). The driver is a separate GitHub artifact installed into the downloaded rootfs, not bundled in the APK. Desktop selection only saves a preference; a Wayland compositor, Xwayland, end-to-end GUI presentation, libhybris, audio, multiple containers and a foreground service are not implemented. Returning home keeps the PTY alive. Destroying the activity stops terminal sessions; downloads survive activity recreation but not process death.
 
 SDK 28 is intentional for prototype rootfs execution compatibility. The Play Store target requirement remains a lint warning, and this APK is for direct installation. Raising the target requires validating a different app-data execution route. Proroot fake root does not grant device privileges; guest apps run with the host app UID. No zero-overhead performance result has been measured.
 
@@ -41,6 +41,8 @@ SDK 28 is intentional for prototype rootfs execution compatibility. The Play Sto
 - xterm.js 5.5.0 / addon-fit 0.10.0: MIT, licenses beside assets. https://github.com/xtermjs/xterm.js . No Termux source is included.
 - Apache Commons Compress: Apache-2.0. https://commons.apache.org/proper/commons-compress/ .
 - Gradle wrapper 8.9: Apache-2.0, license in `third-party/gradle-LICENSE`.
+- RADV Xclipse glibc: Mesa/MIT and component licenses, original NOTICE.txt in the driver artifact; [source and patches](docs/GRAPHICS_BACKEND.md).
+- Wayland 1.24: MIT, license included with its separate runtime artifact.
 - Ubuntu Base: https://www.ubuntu.com/legal . Per-package licenses are in the downloaded rootfs `/usr/share/doc`.
 
 

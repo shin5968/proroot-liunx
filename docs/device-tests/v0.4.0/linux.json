@@ -1,0 +1,36 @@
+{
+  "vkCreateInstance": 0,
+  "devices": [
+    {
+      "name": "AMD Radeon Graphics (RADV MAGELLAN CARL)",
+      "driver": "radv",
+      "driverInfo": "Mesa 27.0.0-devel (git-d29b3afcec)",
+      "driverID": 3,
+      "vendorID": 5197,
+      "dma_buf": true,
+      "external_memory_fd": true,
+      "drm_modifiers": true,
+      "ahb": false
+    }
+  ],
+  "gpu_test": {
+    "stage": "readback",
+    "result": 0,
+    "fill_verified": true,
+    "dma_buf_export": true,
+    "cpu_readback_is_diagnostic_only": true
+  },
+  "wayland": {
+    "connected": false,
+    "linux_dmabuf_version": 0,
+    "status": "NOT_TESTED_NO_COMPOSITOR"
+  },
+  "x11": {
+    "connected": false,
+    "status": "NOT_TESTED_NO_X_SERVER"
+  },
+  "end_to_end_zero_copy": "NOT_VERIFIED",
+  "process_exit": 0,
+  "scope": "LINUX_RADV_PROBE",
+  "stderr": "I\/RADV_BUILD: [ENTRY] radv_CreateInstance pid=20609 (ICD loaded, pre-DRM-open)\nI\/RADV_ARM: [ARM] RADV_DEBUG=(unset) RADV_PERFTEST=(unset) RADV_EXPERIMENTAL=(unset)\namdgpu: DRM version is 3.42.0 (< 3.59); continuing.\nI\/RADV_BUILD: [BUILD] Mesa 27.0.0-devel api=0\nvkEnumeratePhysicalDevices: 0, count: 1\nI\/RADV_ARM: [ARM] mtype=0 (default(0x73a0 PAL parity)) -- VA maps get none\/PAL\nI\/RADV_CHURN: [BO_CHURN] ev=1 creates=1 destroys=0 live=1 allocMB=0 liveMB=0 gttMB=637 evict=62817 movedMB=12118973 last64_in=0.0ms (0 events\/s ~= flushes\/s)\nI\/RADV_CHURN: [BO_SIZES] <16K=1 <64K=0 <256K=0 <1M=0 <4M=0 <16M=0 <64M=0 >=64M=0\nI\/RADV_KILL: [SUBMIT] n=1 bos=1 peak=1 FIRST\nI\/RADV_ARM: [ARM] user_fence=0 (prop\/default)\n"
+}
