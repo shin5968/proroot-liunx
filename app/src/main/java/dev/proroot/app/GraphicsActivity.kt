@@ -32,6 +32,8 @@ object NativeGraphics {
 class GraphicsActivity : ComponentActivity() {
     private val worker = Executors.newSingleThreadExecutor()
     private var holder: SurfaceHolder? = null
+    private var linuxSession: PtySession? = null
+    private var linuxToken = 0
     private var busy by mutableStateOf(false)
     private var result by mutableStateOf("Surface 준비 중")
     private fun probe(surface: Surface) {
@@ -44,6 +46,40 @@ class GraphicsActivity : ComponentActivity() {
             File(filesDir, "graphics-host-report.json").writeText(text)
             runOnUiThread { if (!isDestroyed) { result = text; busy = false } }
         }
+    }
+    private fun probeLinux() {
+        if (busy) return
+        busy = true
+        result = "Proroot 안에서 RADV GPU 실행과 DMA-BUF export를 검증 중"
+        val token = ++linuxToken
+        val root = File(filesDir, "rootfs")
+        try {
+            linuxSession = PtySession(
+                File(applicationInfo.nativeLibraryDir, "libproroot.so").absolutePath,
+                root.absolutePath, File(filesDir, "tmp").absolutePath,
+                output = {}, exited = { code -> runOnUiThread {
+                    if (token != linuxToken || isDestroyed) return@runOnUiThread
+                    linuxSession?.close(); linuxSession = null
+                    val text = try {
+                        val data = JSONObject(File(root, "root/graphics-linux-report.json").readText())
+                        data.put("process_exit", code).put("scope", "LINUX_RADV_PROBE")
+                        data.put("stderr", File(root, "root/graphics-linux-stderr.log").takeIf { it.isFile }?.readText()?.takeLast(12000) ?: "")
+                        data.toString(2)
+                    } catch (error: Exception) { "RADV 검증 실패 ($code): $error" }
+                    result = text; busy = false
+                    File(filesDir, "graphics-linux-report.json").writeText(text)
+                } })
+            val command = "export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/radeon_xclipse_icd.aarch64.json; " +
+                "export PROROOT_DRM_RENDER_NODE=/dev/dri/renderD128 PROROOT_NATIVE_DRM=1; " +
+                "export RADV_XCLIPSE_LOG=1; " +
+                "/usr/local/bin/proroot-graphics-probe > /root/graphics-linux-report.json 2>/root/graphics-linux-stderr.log; exit\n"
+            linuxSession?.write(command.toByteArray(Charsets.UTF_8))
+            window.decorView.postDelayed({
+                if (token == linuxToken && linuxSession != null) {
+                    linuxSession?.close(); linuxSession = null
+                }
+            }, 60000)
+        } catch (error: Exception) { result = "RADV 실행 실패: $error"; busy = false }
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,6 +109,9 @@ class GraphicsActivity : ComponentActivity() {
                             (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Graphics report", result))
                         }) { Text("결과 복사") }
                     }
+                    OutlinedButton(enabled = !busy && File(filesDir, "rootfs/usr/local/bin/proroot-graphics-probe").isFile, onClick = { probeLinux() }) {
+                        Text("Linux RADV · DMA-BUF 검증")
+                    }
                     Text(result, color = Color.White, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()))
                 }
@@ -80,6 +119,7 @@ class GraphicsActivity : ComponentActivity() {
         }
     }
     override fun onDestroy() {
+        linuxToken++; linuxSession?.close(); linuxSession = null
         if (!worker.isShutdown) { worker.execute { NativeGraphics.release() }; worker.shutdown() }
         super.onDestroy()
     }
