@@ -12,10 +12,15 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/mman.h>
 
 extern int __real_open(const char *, int, ...);
 extern int __real_open64(const char *, int, ...);
 extern int __real_ioctl(int, unsigned long, ...);
+extern void *__real_mmap(void *,size_t,int,int,int,off_t);
+extern void *__real_mmap64(void *,size_t,int,int,int,off64_t);
+void *__wrap_mmap(void *,size_t,int,int,int,off_t);
+void *__wrap_mmap64(void *,size_t,int,int,int,off64_t);
 int __wrap_open(const char *, int, ...);
 int __wrap_open64(const char *, int, ...);
 int __wrap_ioctl(int, unsigned long, ...);
@@ -24,13 +29,15 @@ static int enabled(void) {
     return value && !strcmp(value,"1");
 }
 #ifdef __aarch64__
-static long kernel_call(long number,long a,long b,long c,long d) {
+static long kernel_call(long number,long a,long b,long c,long d,long e,long f) {
     register long x0 __asm__("x0")=a;
     register long x1 __asm__("x1")=b;
     register long x2 __asm__("x2")=c;
     register long x3 __asm__("x3")=d;
+    register long x4 __asm__("x4")=e;
+    register long x5 __asm__("x5")=f;
     register long x8 __asm__("x8")=number;
-    __asm__ volatile("svc 0" : "+r"(x0) : "r"(x1),"r"(x2),"r"(x3),"r"(x8) : "memory","cc");
+    __asm__ volatile("svc 0" : "+r"(x0) : "r"(x1),"r"(x2),"r"(x3),"r"(x4),"r"(x5),"r"(x8) : "memory","cc");
     if(x0<0 && x0>=-4095){errno=(int)-x0;return -1;}
     return x0;
 }
@@ -38,7 +45,7 @@ static long kernel_call(long number,long a,long b,long c,long d) {
 static int native_open(const char *path,int flags,unsigned int mode) {
 #ifdef __aarch64__
     if(enabled() && path && !strcmp(path,"/dev/dri/renderD128"))
-        return (int)kernel_call(56,AT_FDCWD,(long)path,flags,mode);
+        return (int)kernel_call(56,AT_FDCWD,(long)path,flags,mode,0,0);
 #endif
     return __real_open(path,flags,mode);
 }
@@ -56,7 +63,25 @@ int __wrap_ioctl(int fd,unsigned long request,...) {
     va_list ap;va_start(ap,request);void *arg=va_arg(ap,void *);va_end(ap);
 #ifdef __aarch64__
     if(enabled() && ((request>>8)&0xff)=='d')
-        return (int)kernel_call(29,fd,(long)request,(long)arg,0);
+        return (int)kernel_call(29,fd,(long)request,(long)arg,0,0,0);
 #endif
     return __real_ioctl(fd,request,arg);
+}
+
+/* A mapped DRM BO is a real kernel fd, not the runtime's virtual zink storage.
+ * File descriptors already identify their kernel objects; no pathname routing
+ * is needed for these mappings. Anonymous memory stays with the normal libc. */
+void *__wrap_mmap(void *address,size_t length,int protection,int flags,int fd,off_t offset) {
+#ifdef __aarch64__
+    if(enabled() && fd>=0)
+        return (void *)kernel_call(222,(long)address,length,protection,flags,fd,offset);
+#endif
+    return __real_mmap(address,length,protection,flags,fd,offset);
+}
+void *__wrap_mmap64(void *address,size_t length,int protection,int flags,int fd,off64_t offset) {
+#ifdef __aarch64__
+    if(enabled() && fd>=0)
+        return (void *)kernel_call(222,(long)address,length,protection,flags,fd,offset);
+#endif
+    return __real_mmap64(address,length,protection,flags,fd,offset);
 }
