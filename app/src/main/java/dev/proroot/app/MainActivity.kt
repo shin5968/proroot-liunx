@@ -14,6 +14,8 @@ import android.view.MenuItem
 import android.view.View
 import android.graphics.Rect
 import android.view.inputmethod.InputMethodManager
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputConnection
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -31,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -43,6 +46,9 @@ class MainActivity : ComponentActivity() {
     private val preferences by lazy { getSharedPreferences("appearance", MODE_PRIVATE) }
     private var session: PtySession? = null
     private var terminal: WebView? = null
+    private var keyboardAllowed = false
+    private var imeVisible = false
+    private var keyboardRequest = 0
     private var selectionMode: ActionMode? = null
     private var selectionCallback: SelectionCallback? = null
     private val selectionRect = Rect()
@@ -69,6 +75,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { _, insets ->
+            val visible = insets.isVisible(WindowInsetsCompat.Type.ime())
+            if (imeVisible && !visible) {
+                keyboardAllowed = false
+                keyboardRequest++
+                terminal?.evaluateJavascript("window.keyboardHidden?.()", null)
+            }
+            imeVisible = visible
+            insets
+        }
         File(filesDir, "tmp").mkdirs()
         installer = ViewModelProvider(this)[RootfsInstaller::class.java]
         fontSize = preferences.getInt("fontSize", 14).coerceIn(10, 24)
@@ -186,7 +202,13 @@ class MainActivity : ComponentActivity() {
     }
 
     @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
-    private fun makeTerminal(): WebView = WebView(this).apply {
+    private fun makeTerminal(): WebView = object : WebView(this) {
+        // A focused WebView textarea otherwise reopens the IME on a scrolling touch.
+        // Only an explicit terminal tap or the keyboard menu enables its editor.
+        override fun onCheckIsTextEditor(): Boolean = keyboardAllowed && super.onCheckIsTextEditor()
+        override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection? =
+            if (keyboardAllowed) super.onCreateInputConnection(outAttrs) else null
+    }.apply {
         settings.javaScriptEnabled = true
         settings.allowFileAccess = false
         settings.allowContentAccess = false
@@ -213,6 +235,10 @@ class MainActivity : ComponentActivity() {
             }
             @JavascriptInterface fun hideSelectionMenu() = runOnUiThread { finishSelectionMode(false) }
             @JavascriptInterface fun keyboard() = runOnUiThread { showKeyboard() }
+            @JavascriptInterface fun cancelKeyboard() = runOnUiThread {
+                keyboardRequest++
+                if (!imeVisible) keyboardAllowed = false
+            }
             @JavascriptInterface fun modifiersChanged(ctrl: Boolean, alt: Boolean) = runOnUiThread {
                 ctrlPressed = ctrl; altPressed = alt
             }
@@ -314,14 +340,19 @@ class MainActivity : ComponentActivity() {
     }
     private fun showKeyboard() {
         val view = terminal ?: return
+        val request = ++keyboardRequest
         // DropdownMenu owns a separate window until Compose dismisses it.
         // Request the IME after that window releases focus, not inside its click event.
         view.postDelayed({
-            if (screen != "terminal" || isDestroyed) return@postDelayed
+            if (screen != "terminal" || isDestroyed || request != keyboardRequest) return@postDelayed
+            keyboardAllowed = true
             view.requestFocus()
             view.evaluateJavascript("terminal.focus()") {
                 view.post {
-                    (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+                    if (request != keyboardRequest) return@post
+                    val input = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+                    input.restartInput(view)
+                    input.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
                     WindowInsetsControllerCompat(window, view).show(WindowInsetsCompat.Type.ime())
                 }
             }
@@ -331,6 +362,7 @@ class MainActivity : ComponentActivity() {
         pendingLaunch = false; generation++; session?.close(); session = null; running = false; status = "세션 정지됨"; line(status)
     }
     override fun onDestroy() {
+        keyboardRequest++
         finishSelectionMode(false)
         generation++; session?.close(); session = null
         terminal?.removeJavascriptInterface("Host"); terminal?.destroy(); terminal = null

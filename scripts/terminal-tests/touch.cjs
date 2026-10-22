@@ -91,6 +91,28 @@ await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:200
 assert.equal(await page.evaluate(()=>flingFrame),0,'touch stops momentum');
 await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});
 assert.equal(await page.evaluate(()=>terminal.hasSelection()),false);
+// Hidden-IME and animation regressions: only a deliberate tap requests a keyboard.
+await page.evaluate(()=>{window.cancelRequests=0;Host.cancelKeyboard=()=>cancelRequests++;stopFling();terminal.scrollToLine(20);});
+const keyboardBefore=await page.evaluate(()=>keyboardRequests);
+await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:210,y:200}]});
+await page.evaluate(()=>keyboardHidden());
+await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+assert.equal(await page.evaluate(()=>keyboardRequests),keyboardBefore,'closing IME must not turn an active gesture into a keyboard tap');
+await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:210,y:200}]});
+await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+assert.equal(await page.evaluate(()=>keyboardRequests),keyboardBefore+1,'fresh deliberate tap can reopen IME');
+await page.evaluate(()=>{terminal.scrollToLine(70);startFling(-0.6);});
+const beforeStop=await page.evaluate(()=>keyboardRequests);
+await page.touchscreen.tap(210,250);
+assert.equal(await page.evaluate(()=>keyboardRequests),beforeStop,'tap to stop momentum must not open IME');
+assert.equal(await page.evaluate(()=>flingFrame),0);
+await page.evaluate(()=>{terminal.scrollToLine(20);});
+const topBeforeResize=await page.evaluate(()=>terminal.buffer.active.viewportY);
+await page.setViewportSize({width:390,height:450});await page.waitForTimeout(100);
+assert.equal(await page.evaluate(()=>terminal.buffer.active.viewportY),topBeforeResize,'opening keyboard preserves scrolled history position');
+await page.setViewportSize({width:390,height:740});await page.waitForTimeout(100);
+assert.equal(await page.evaluate(()=>terminal.buffer.active.viewportY),topBeforeResize,'closing keyboard preserves scrolled history position');
+assert((await page.evaluate(()=>cancelRequests))>0);
 assert.deepEqual(errors,[]);console.log('PASS: scroll, tap dismissal, hold cancellation, selection handles, copy/paste, bracketed paste, native menu, keyboard bridge and momentum scrolling');
 await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});

@@ -29,7 +29,9 @@ window.extraKey=label=>{
 terminal.onData(send);terminal.onResize(s=>{stopFling();hideSelection();Host.resize(s.cols,s.rows);});
 window.receive=data=>terminal.write(Uint8Array.from(atob(data),c=>c.charCodeAt(0)));
 window.statusLine=text=>terminal.writeln('\r\n'+text);
-window.fitTerminal=()=>{const r=document.getElementById('terminal').getBoundingClientRect();if(r.width<20||r.height<20)return;fit.fit();if(selecting)renderSelection();Host.viewportReady(terminal.cols,terminal.rows);};
+window.fitTerminal=()=>{const r=document.getElementById('terminal').getBoundingClientRect();if(r.width<20||r.height<20)return;const buffer=terminal.buffer.active,previous=buffer.viewportY,following=previous===buffer.baseY;
+fit.fit();if(!following)terminal.scrollToLine(Math.min(previous,terminal.buffer.active.baseY));
+if(selecting)renderSelection();Host.viewportReady(terminal.cols,terminal.rows);};
 window.configureTerminal=(fontSize)=>{if(terminal.options.fontSize!==fontSize){terminal.options.fontSize=fontSize;window.fitTerminal();}};
 const tools=document.getElementById('tools'),first=document.getElementById('start'),last=document.getElementById('end');
 let anchor=0,extent=0,selecting=false,dragging=false;
@@ -92,16 +94,18 @@ function startFling(velocity){
  };
  flingFrame=requestAnimationFrame(step);
 }
-window.deactivateTerminal=()=>{endGesture();stopFling();hideSelection();};
+window.deactivateTerminal=()=>{endGesture();stopFling();hideSelection();cancelKeyboard();};
+function cancelKeyboard(){if(typeof Host.cancelKeyboard==='function')Host.cancelKeyboard();}
+window.keyboardHidden=()=>{cancelKeyboard();terminal.blur();if(touch){touch.moved=true;cancelHold();}};
 let timer=null,touch=null,lastTouchTime=0;
 const area=document.getElementById('terminal');
 function cancelHold(){clearTimeout(timer);timer=null;}
 function endGesture(){cancelHold();touch=null;lastTouchTime=Date.now();}
 area.addEventListener('touchstart',e=>{
- e.preventDefault();e.stopImmediatePropagation();lastTouchTime=Date.now();cancelHold();stopFling();
+ e.preventDefault();e.stopImmediatePropagation();lastTouchTime=Date.now();cancelHold();const stopping=flingFrame!==0;stopFling();cancelKeyboard();
  if(e.touches.length!==1){touch=null;return;}
  const t=e.touches[0];
- touch={x:t.clientX,y:t.clientY,lastY:t.clientY,remainder:0,moved:false,held:false,dismissed:selecting,lastTime:performance.now(),velocity:0};
+ touch={x:t.clientX,y:t.clientY,lastY:t.clientY,remainder:0,moved:false,held:false,dismissed:selecting||stopping,lastTime:performance.now(),velocity:0};
  timer=setTimeout(()=>{
   timer=null;if(!touch||touch.moved)return;
   touch.held=true;longPress(touch.x,touch.y);
@@ -112,7 +116,7 @@ area.addEventListener('touchmove',e=>{
  if(!touch||e.touches.length!==1){endGesture();return;}
  const t=e.touches[0];
  if(Math.hypot(t.clientX-touch.x,t.clientY-touch.y)>8){
-  cancelHold();if(!touch.moved){touch.moved=true;hideSelection();}
+  cancelHold();cancelKeyboard();if(!touch.moved){touch.moved=true;hideSelection();}
  }
  if(touch.moved){
   const h=geometry().h,now=performance.now(),dt=Math.max(1,now-touch.lastTime);
@@ -125,6 +129,8 @@ area.addEventListener('touchmove',e=>{
 },{passive:false,capture:true});
 area.addEventListener('touchend',e=>{
  e.preventDefault();e.stopImmediatePropagation();
+ const ending=e.changedTouches[0];
+ if(touch&&ending&&Math.hypot(ending.clientX-touch.x,ending.clientY-touch.y)>8){touch.moved=true;cancelKeyboard();}
  if(touch&&!touch.moved&&!touch.held){hideSelection();if(!touch.dismissed){terminal.focus();if(typeof Host.keyboard==='function')Host.keyboard();}}
  if(touch?.moved&&performance.now()-touch.lastTime<100)startFling(touch.velocity);
  endGesture();
