@@ -77,6 +77,25 @@ std::string probe(JNIEnv* env,jobject surface) {
         out<<"\"ahb_extension\":"<<(ahb?"true":"false")<<",\"dma_buf_extension\":"<<(dma?"true":"false")
            <<",\"external_memory_fd\":"<<(fd?"true":"false")<<",\"extensions\":[";
         for(size_t i=0;i<ext.size();++i){if(i)out<<',';out<<quote(ext[i].extensionName);}out<<"],";
+        auto imageProperties=reinterpret_cast<PFN_vkGetPhysicalDeviceImageFormatProperties2>(vkGetInstanceProcAddr(state->instance,"vkGetPhysicalDeviceImageFormatProperties2"));
+        if(imageProperties) {
+            out<<"\"external_image_routes\":[";
+            const VkExternalMemoryHandleTypeFlagBits types[]={VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID};
+            for(int i=0;i<2;++i) {
+                auto handle=info<VkPhysicalDeviceExternalImageFormatInfo>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO);handle.handleType=types[i];
+                auto query=info<VkPhysicalDeviceImageFormatInfo2>(VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2);
+                query.pNext=&handle;query.format=VK_FORMAT_R8G8B8A8_UNORM;query.type=VK_IMAGE_TYPE_2D;
+                query.tiling=VK_IMAGE_TILING_OPTIMAL;query.usage=VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+                auto externalProperties=info<VkExternalImageFormatProperties>(VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES);
+                auto properties2=info<VkImageFormatProperties2>(VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2);properties2.pNext=&externalProperties;
+                const auto result=imageProperties(gpu,&query,&properties2);
+                const auto& caps=externalProperties.externalMemoryProperties;
+                if(i)out<<',';
+                out<<"{\"handle_type\":"<<types[i]<<",\"result\":"<<result<<",\"compatible_handles\":"<<caps.compatibleHandleTypes
+                   <<",\"export_from_imported\":"<<caps.exportFromImportedHandleTypes<<",\"features\":"<<caps.externalMemoryFeatures<<"}";
+            }
+            out<<"],";
+        }
         if(!ahb)throw std::string("Host driver lacks Android hardware buffer import");
         uint32_t families=0;vkGetPhysicalDeviceQueueFamilyProperties(gpu,&families,nullptr);
         std::vector<VkQueueFamilyProperties> queues(families);vkGetPhysicalDeviceQueueFamilyProperties(gpu,&families,queues.data());
