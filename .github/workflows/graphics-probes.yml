@@ -1,0 +1,24 @@
+name: Linux graphics probes
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/graphics/linux-probe.c'
+      - '.github/workflows/graphics-probes.yml'
+permissions:
+  contents: read
+jobs:
+  probes:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libvulkan-dev libwayland-dev libxcb1-dev libxcb-dri3-dev
+          mkdir -p graphics-dist
+          cc -O2 -Wall -Wextra -Werror scripts/graphics/linux-probe.c -o graphics-dist/proroot-graphics-probe $(pkg-config --cflags --libs vulkan wayland-client xcb xcb-dri3)
+          sha256sum graphics-dist/proroot-graphics-probe > graphics-dist/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-graphics-probes-arm64
+          path: graphics-dist/

@@ -4,7 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/radv-glibc.yml'
-      - 'scripts/graphics/**'
+      - 'scripts/graphics/explicit-render-node.patch'
 permissions:
   contents: read
 jobs:
