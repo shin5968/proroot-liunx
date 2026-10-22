@@ -51,10 +51,10 @@ class GraphicsActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Column(Modifier.fillMaxSize().background(Color(0xFF101914)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row {
-                        Text("Vulkan · AHB 검증", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+                        Text("Vulkan · AHB 검증", color = Color.White, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                         TextButton(onClick = { finish() }) { Text("닫기") }
                     }
-                    Text("Android 호스트 테스트입니다. RADV·Wayland 전체 경로의 zero-copy 성공을 뜻하지 않습니다.", style = MaterialTheme.typography.bodySmall)
+                    Text("Android 호스트 테스트입니다. RADV·Wayland 전체 경로의 zero-copy 성공을 뜻하지 않습니다.", color = Color(0xFFCBD5CF), style = MaterialTheme.typography.bodySmall)
                     AndroidView(factory = { context ->
                         SurfaceView(context).apply {
                             this.holder.addCallback(object : SurfaceHolder.Callback {
@@ -73,7 +73,7 @@ class GraphicsActivity : ComponentActivity() {
                             (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("Graphics report", result))
                         }) { Text("결과 복사") }
                     }
-                    Text(result, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
+                    Text(result, color = Color.White, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()))
                 }
             }
