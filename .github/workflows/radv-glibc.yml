@@ -38,7 +38,10 @@ jobs:
           git -C "$RUNNER_TEMP/radv" fetch --depth=1 origin d29b3afcecc542119bd548308a34e8dead6f5655
           git -C "$RUNNER_TEMP/radv" checkout --detach FETCH_HEAD
           test "$(git -C "$RUNNER_TEMP/radv" rev-parse HEAD)" = d29b3afcecc542119bd548308a34e8dead6f5655
-      - name: Build original glibc driver
+      - name: Apply opt-in Android render-node discovery
+        run: |
+          git -C "$RUNNER_TEMP/radv" apply "$GITHUB_WORKSPACE/scripts/graphics/explicit-render-node.patch"
+      - name: Build pinned glibc driver with recorded patch
         run: |
           cd "$RUNNER_TEMP/radv"
           sh build.sh
@@ -51,7 +54,9 @@ jobs:
           readelf -d build-glibc/libvulkan_radeon.so > "$GITHUB_WORKSPACE/graphics-dist/driver-dynamic.txt"
           readelf --version-info build-glibc/libvulkan_radeon.so > "$GITHUB_WORKSPACE/graphics-dist/driver-versions.txt"
           printf '%s\n' d29b3afcecc542119bd548308a34e8dead6f5655 > "$GITHUB_WORKSPACE/graphics-dist/SOURCE_COMMIT"
+          cp "$GITHUB_WORKSPACE/scripts/graphics/explicit-render-node.patch" "$GITHUB_WORKSPACE/graphics-dist/"
           cd "$GITHUB_WORKSPACE/graphics-dist"
+          sha256sum explicit-render-node.patch > PATCH_SHA256
           sha256sum *.zip > SHA256SUMS
       - name: Build Linux probes
         run: |

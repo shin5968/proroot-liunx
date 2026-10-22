@@ -1,0 +1,31 @@
+--- a/src/vulkan/runtime/vk_instance.c
++++ b/src/vulkan/runtime/vk_instance.c
+@@ -412,6 +412,28 @@
+ static VkResult
+ enumerate_drm_physical_devices_locked(struct vk_instance *instance)
+ {
++   /* Android SELinux may deny sysfs enumeration while allowing the GPU render
++    * node itself. Opt-in direct-node discovery still goes through the driver's
++    * ordinary open, DRM version and hardware capability checks. */
++   const char *explicit_node = getenv("PROROOT_DRM_RENDER_NODE");
++   if (explicit_node &&
++       (!strcmp(explicit_node, "/dev/dri/renderD128") ||
++        !strcmp(explicit_node, "/dev/dri/renderD129"))) {
++      char *nodes[DRM_NODE_MAX] = {0};
++      nodes[DRM_NODE_RENDER] = (char *)explicit_node;
++      drmPciBusInfo bus = {0}; /* A platform device has no PCI bus address. */
++      drmDevice device = {0};
++      device.nodes = nodes;
++      device.available_nodes = 1 << DRM_NODE_RENDER;
++      device.bustype = DRM_BUS_PLATFORM;
++      device.businfo.pci = &bus;
++      struct vk_physical_device *pdevice = NULL;
++      VkResult result = instance->physical_devices.try_create_for_drm(instance, &device, &pdevice);
++      if (result != VK_SUCCESS)
++         return result;
++      list_addtail(&pdevice->link, &instance->physical_devices.list);
++      return VK_SUCCESS;
++   }
+    /* libdrm returns a maximum of 256 devices (see MAX_DRM_NODES in libdrm) */
+    drmDevicePtr devices[256];
+    int max_devices = drmGetDevices2(0, devices, ARRAY_SIZE(devices));
