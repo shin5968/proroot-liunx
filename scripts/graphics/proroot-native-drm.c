@@ -3,7 +3,9 @@
  * Only the real Xclipse render node and DRM ioctl class are routed directly.
  * Android's ordinary process permissions and SELinux checks still apply.
  */
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <stdarg.h>
@@ -14,6 +16,9 @@
 extern int __real_open(const char *, int, ...);
 extern int __real_open64(const char *, int, ...);
 extern int __real_ioctl(int, unsigned long, ...);
+int __wrap_open(const char *, int, ...);
+int __wrap_open64(const char *, int, ...);
+int __wrap_ioctl(int, unsigned long, ...);
 static int enabled(void) {
     const char *value = getenv("PROROOT_NATIVE_DRM");
     return value && !strcmp(value,"1");
