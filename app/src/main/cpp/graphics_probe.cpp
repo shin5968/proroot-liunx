@@ -6,6 +6,8 @@
 #include <android/surface_control.h>
 #include <dlfcn.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <algorithm>
 #include <cstring>
@@ -60,6 +62,20 @@ void check(VkResult result,const char* operation) {
 std::string probe(JNIEnv* env,jobject surface) {
     auto state=std::make_unique<State>(); std::ostringstream out;
     out<<"{\"scope\":\"ANDROID_HOST_ONLY\",\"requested_linux_driver_commit\":\"d29b3afcecc542119bd548308a34e8dead6f5655\",";
+    out<<"\"host_driver_type\":\"ANDROID_SYSTEM_VULKAN\",\"native_drm_nodes\":[";
+    struct DrmVersion { int major,minor,patch; size_t nameSize; char* name; size_t dateSize; char* date; size_t descriptionSize; char* description; };
+    const char* paths[]={"/dev/dri/renderD128","/dev/dri/renderD129"};
+    for(int i=0;i<2;++i) {
+        if(i)out<<',';
+        const int fd=open(paths[i],O_RDWR|O_CLOEXEC);
+        char name[512]{},date[512]{},description[512]{};
+        DrmVersion version{};version.nameSize=511;version.name=name;version.dateSize=511;version.date=date;version.descriptionSize=511;version.description=description;
+        const int result=fd<0?-1:ioctl(fd,static_cast<int>(_IOWR('d',0,DrmVersion)),&version);
+        out<<"{\"path\":"<<quote(paths[i])<<",\"open\":"<<(fd>=0?"true":"false")<<",\"ioctl\":"<<result
+           <<",\"name\":"<<quote(name)<<",\"major\":"<<version.major<<",\"minor\":"<<version.minor<<"}";
+        if(fd>=0)close(fd);
+    }
+    out<<"],";
     try {
         auto app=info<VkApplicationInfo>(VK_STRUCTURE_TYPE_APPLICATION_INFO);
         app.pApplicationName="Proroot graphics validation"; app.apiVersion=VK_API_VERSION_1_1;
