@@ -56,7 +56,42 @@ assert.deepEqual(await page.evaluate(()=>inputs.splice(0)),['\x1b[200~a\rb\x1b[2
 await page.evaluate(()=>{longPress(20,15);anchor=0;extent=terminal.cols+6;renderSelection();});
 assert((await page.evaluate(()=>terminal.getSelection())).includes('second'));
 
-assert.deepEqual(errors,[]);console.log('PASS: scroll, tap dismissal, hold cancellation, selection handles, copy/paste, bracketed paste and modifiers');
+// Android bridge branch: toolbar is native, handles remain in the terminal.
+await page.evaluate(()=>{
+ hideSelection();window.nativeMenus=[];window.keyboardRequests=0;window.hiddenMenus=0;
+ Host.selectionMenu=(...args)=>nativeMenus.push(args);
+ Host.hideSelectionMenu=()=>hiddenMenus++;
+ Host.keyboard=()=>keyboardRequests++;
+ terminal.scrollToTop();longPress(85,12);
+});
+assert.equal(await page.locator('#tools').isVisible(),false,'native toolbar must replace HTML toolbar');
+assert((await page.evaluate(()=>nativeMenus.length))>0);
+assert.equal(await page.evaluate(()=>nativeMenus.at(-1)[4]),true);
+const nativeHandle=await page.locator('#end').boundingBox();
+await page.mouse.move(nativeHandle.x+19,nativeHandle.y+10);await page.mouse.down();
+assert.equal(await page.evaluate(()=>dragging),true);
+assert((await page.evaluate(()=>hiddenMenus))>0,'hide native menu while dragging');
+await page.mouse.move(nativeHandle.x+30,nativeHandle.y+10);await page.mouse.up();
+assert.equal(await page.evaluate(()=>dragging),false);
+await page.evaluate(()=>selectionAction('copy'));
+assert.equal(await page.evaluate(()=>selecting),false);
+await page.touchscreen.tap(300,550);
+assert((await page.evaluate(()=>keyboardRequests))>0,'tap opens IME through native bridge');
+await page.evaluate(()=>{terminal.scrollToBottom();stopFling();});
+await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:200,y:180}]});
+for(let y=210;y<=450;y+=30){
+ await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:200,y}]});
+ await page.waitForTimeout(15);
+}
+await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+const released=await page.evaluate(()=>terminal.buffer.active.viewportY);
+await page.waitForTimeout(120);
+assert((await page.evaluate(()=>terminal.buffer.active.viewportY))<released,'fling continues after finger release');
+await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:200,y:400}]});
+assert.equal(await page.evaluate(()=>flingFrame),0,'touch stops momentum');
+await cdp.send('Input.dispatchTouchEvent',{type:'touchCancel',touchPoints:[]});
+assert.equal(await page.evaluate(()=>terminal.hasSelection()),false);
+assert.deepEqual(errors,[]);console.log('PASS: scroll, tap dismissal, hold cancellation, selection handles, copy/paste, bracketed paste, native menu, keyboard bridge and momentum scrolling');
 await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});
 

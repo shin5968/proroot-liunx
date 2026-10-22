@@ -8,6 +8,11 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Base64
 import android.view.WindowManager
+import android.view.ActionMode
+import android.view.Menu
+import android.view.MenuItem
+import android.view.View
+import android.graphics.Rect
 import android.view.inputmethod.InputMethodManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
@@ -38,6 +43,10 @@ class MainActivity : ComponentActivity() {
     private val preferences by lazy { getSharedPreferences("appearance", MODE_PRIVATE) }
     private var session: PtySession? = null
     private var terminal: WebView? = null
+    private var selectionMode: ActionMode? = null
+    private var selectionCallback: SelectionCallback? = null
+    private val selectionRect = Rect()
+    private var selectionHasText = false
     private var ready by mutableStateOf(false)
     private var screen by mutableStateOf("home")
     private var running by mutableStateOf(false)
@@ -72,7 +81,10 @@ class MainActivity : ComponentActivity() {
                 val fullscreen = screen == "terminal"
                 var menu by remember { mutableStateOf(false) }
                 var keys by remember { mutableStateOf(true) }
-                LaunchedEffect(fullscreen, dark) { updateSystemBars(fullscreen) }
+                LaunchedEffect(fullscreen, dark) {
+                    updateSystemBars(fullscreen)
+                    if (!fullscreen) { finishSelectionMode(false); terminal?.evaluateJavascript("window.deactivateTerminal?.()", null) }
+                }
                 BackHandler(enabled = screen != "home") { pendingLaunch = false; screen = "home" }
                 Box(Modifier.fillMaxSize().background(colors.background)) {
                     // This one WebView survives navigation; PTY output keeps flowing while hidden.
@@ -93,7 +105,7 @@ class MainActivity : ComponentActivity() {
                                             val active = (label == "CTRL" && ctrlPressed) || (label == "ALT" && altPressed)
                                             TextButton(
                                                 onClick = { terminal?.evaluateJavascript("window.extraKey(" + JSONObject.quote(label) + ")", null) },
-                                                modifier = Modifier.weight(1f).height(44.dp),
+                                                modifier = Modifier.weight(1f).height(36.dp),
                                                 contentPadding = PaddingValues(0.dp),
                                                 colors = ButtonDefaults.textButtonColors(
                                                     contentColor = if (active) Color(0xFF86EFAC) else Color(0xFFEEEEEE),
@@ -184,6 +196,23 @@ class MainActivity : ComponentActivity() {
                 ready = true
                 terminal?.evaluateJavascript("window.configureTerminal?.($fontSize,$dark);window.fitTerminal?.()", null)
             }
+            @JavascriptInterface fun selectionMenu(left: Float, top: Float, right: Float, bottom: Float, hasText: Boolean) = runOnUiThread {
+                val view = terminal ?: return@runOnUiThread
+                if (screen != "terminal") return@runOnUiThread
+                selectionRect.set((left * view.width).toInt(), (top * view.height).toInt(),
+                    (right * view.width).toInt(), (bottom * view.height).toInt())
+                selectionHasText = hasText
+                if (selectionMode == null) {
+                    val callback = SelectionCallback()
+                    selectionCallback = callback
+                    selectionMode = view.startActionMode(callback, ActionMode.TYPE_FLOATING)
+                } else {
+                    selectionMode?.invalidate()
+                    selectionMode?.invalidateContentRect()
+                }
+            }
+            @JavascriptInterface fun hideSelectionMenu() = runOnUiThread { finishSelectionMode(false) }
+            @JavascriptInterface fun keyboard() = runOnUiThread { showKeyboard() }
             @JavascriptInterface fun modifiersChanged(ctrl: Boolean, alt: Boolean) = runOnUiThread {
                 ctrlPressed = ctrl; altPressed = alt
             }
@@ -223,6 +252,44 @@ class MainActivity : ComponentActivity() {
         terminal = this
         loadUrl("https://app.local/index.html")
     }
+    private fun finishSelectionMode(clear: Boolean) {
+        selectionCallback?.clearOnFinish = clear
+        selectionMode?.finish()
+        selectionMode = null
+        selectionCallback = null
+    }
+
+    private inner class SelectionCallback : ActionMode.Callback2() {
+        var clearOnFinish = true
+        override fun onCreateActionMode(mode: ActionMode, menu: Menu): Boolean {
+            menu.add(0, android.R.id.copy, 0, "복사").setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+            menu.add(0, android.R.id.paste, 1, "붙여넣기").setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+            menu.add(0, android.R.id.selectAll, 2, "전체 선택").setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+            return true
+        }
+        override fun onPrepareActionMode(mode: ActionMode, menu: Menu): Boolean {
+            menu.findItem(android.R.id.copy).isEnabled = selectionHasText
+            menu.findItem(android.R.id.paste).isEnabled =
+                (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).hasPrimaryClip()
+            return true
+        }
+        override fun onGetContentRect(mode: ActionMode, view: View, outRect: Rect) { outRect.set(selectionRect) }
+        override fun onActionItemClicked(mode: ActionMode, item: MenuItem): Boolean {
+            val action = when (item.itemId) {
+                android.R.id.copy -> "copy"
+                android.R.id.paste -> "paste"
+                android.R.id.selectAll -> "all"
+                else -> return false
+            }
+            terminal?.evaluateJavascript("window.selectionAction(" + JSONObject.quote(action) + ")", null)
+            return true
+        }
+        override fun onDestroyActionMode(mode: ActionMode) {
+            if (selectionCallback === this) { selectionMode = null; selectionCallback = null }
+            if (clearOnFinish) terminal?.evaluateJavascript("window.dismissSelection?.()", null)
+        }
+    }
+
     private fun line(text: String) { terminal?.evaluateJavascript("window.statusLine?.(${JSONObject.quote(text)})", null) }
     private fun startSession() {
         if (running) return
@@ -264,6 +331,7 @@ class MainActivity : ComponentActivity() {
         pendingLaunch = false; generation++; session?.close(); session = null; running = false; status = "세션 정지됨"; line(status)
     }
     override fun onDestroy() {
+        finishSelectionMode(false)
         generation++; session?.close(); session = null
         terminal?.removeJavascriptInterface("Host"); terminal?.destroy(); terminal = null
         super.onDestroy()

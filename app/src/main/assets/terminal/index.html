@@ -3,17 +3,20 @@ html,body{margin:0;width:100%;height:100vh;background:#000;overflow:hidden}
 #terminal{position:fixed;inset:4px 4px 0 8px;touch-action:none;-webkit-user-select:none;user-select:none}
 #tools{position:fixed;z-index:10;display:none;background:#303030;border-radius:8px;padding:4px;box-shadow:0 2px 12px #000}
 #tools button{background:none;border:0;color:white;padding:12px;font-size:14px}
-.handle{position:fixed;z-index:9;width:24px;height:28px;background:#86efac;border-radius:0 50% 50% 50%;touch-action:none;display:none}
-</style></head><body><div id="terminal"></div>
+.handle{position:fixed;z-index:9;width:38px;height:44px;touch-action:none;display:none}
+.handle:before{content:'';position:absolute;left:9px;top:0;width:20px;height:20px;background:#29a3ef;border-radius:0 50% 50% 50%}#start:before{border-radius:50% 0 50% 50%}
+
+#scroll-thumb{position:fixed;right:2px;width:3px;background:#999;border-radius:2px;z-index:8;opacity:0;pointer-events:none;transition:opacity .15s}
+</style></head><body><div id="scroll-thumb"></div><div id="terminal"></div>
 <div id="tools"><button id="copy">복사</button><button id="paste">붙여넣기</button><button id="all">전체 선택</button><button id="close">닫기</button></div>
 <div id="start" class="handle"></div><div id="end" class="handle"></div>
 <script src="xterm.js"></script><script src="addon-fit.js"></script><script>
-const terminal=new Terminal({cursorBlink:true,fontSize:14,scrollback:5000,theme:{background:'#000000',foreground:'#eeeeee',cursor:'#ffffff',selectionBackground:'#45634f',selectionInactiveBackground:'#45634f'}});
+const terminal=new Terminal({cursorBlink:true,fontSize:14,scrollback:5000,theme:{background:'#000000',foreground:'#eeeeee',cursor:'#ffffff',selectionBackground:'#ffffff',selectionForeground:'#000000',selectionInactiveBackground:'#ffffff'}});
 const fit=new FitAddon.FitAddon();terminal.loadAddon(fit);terminal.open(document.getElementById('terminal'));
 let ctrl=false,alt=false,pasting=false;
 function send(data){
  if(pasting){Host.input(data);return;}
- hideSelection();
+ stopFling();hideSelection();
  if(ctrl&&data.length===1){const n=data.toUpperCase().charCodeAt(0);if(n>=64&&n<=95)data=String.fromCharCode(n-64);else if(data===' ')data='\x00';}
  if(alt)data='\x1b'+data;
  Host.input(data);
@@ -23,22 +26,43 @@ window.extraKey=label=>{
  const keys={ESC:'\x1b',TAB:'\t',HOME:'\x1b[H',END:'\x1b[F','↑':'\x1b[A','↓':'\x1b[B','←':'\x1b[D','→':'\x1b[C',PGUP:'\x1b[5~',PGDN:'\x1b[6~'};
  send(keys[label]||label);
 };
-terminal.onData(send);terminal.onResize(s=>{hideSelection();Host.resize(s.cols,s.rows);});
+terminal.onData(send);terminal.onResize(s=>{stopFling();hideSelection();Host.resize(s.cols,s.rows);});
 window.receive=data=>terminal.write(Uint8Array.from(atob(data),c=>c.charCodeAt(0)));
 window.statusLine=text=>terminal.writeln('\r\n'+text);
 window.fitTerminal=()=>{const r=document.getElementById('terminal').getBoundingClientRect();if(r.width<20||r.height<20)return;fit.fit();if(selecting)renderSelection();Host.viewportReady(terminal.cols,terminal.rows);};
 window.configureTerminal=(fontSize)=>{if(terminal.options.fontSize!==fontSize){terminal.options.fontSize=fontSize;window.fitTerminal();}};
 const tools=document.getElementById('tools'),first=document.getElementById('start'),last=document.getElementById('end');
-let anchor=0,extent=0,selecting=false;
+let anchor=0,extent=0,selecting=false,dragging=false;
 function geometry(){const r=document.querySelector('.xterm-screen').getBoundingClientRect();return {r,w:r.width/terminal.cols,h:r.height/terminal.rows};}
 function cell(x,y){const {r,w,h}=geometry();return (terminal.buffer.active.viewportY+Math.max(0,Math.min(terminal.rows-1,Math.floor((y-r.top)/h))))*terminal.cols+Math.max(0,Math.min(terminal.cols-1,Math.floor((x-r.left)/w)));}
-function hideSelection(){selecting=false;tools.style.display=first.style.display=last.style.display='none';terminal.clearSelection();}
+function hideSelection(){
+ const active=selecting;selecting=false;tools.style.display=first.style.display=last.style.display='none';terminal.clearSelection();
+ if(active&&typeof Host.hideSelectionMenu==='function')Host.hideSelectionMenu();
+}
+window.dismissSelection=hideSelection;
+function hideToolbar(){tools.style.display='none';if(typeof Host.hideSelectionMenu==='function')Host.hideSelectionMenu();}
 function renderSelection(){
  const a=Math.min(anchor,extent),b=Math.max(anchor,extent);
  terminal.select(a%terminal.cols,Math.floor(a/terminal.cols),Math.max(1,b-a));
  const {r,w,h}=geometry(),v=terminal.buffer.active.viewportY;
- for(const [el,n] of [[first,a],[last,b]]){const y=Math.floor(n/terminal.cols)-v;el.style.display=y>=0&&y<terminal.rows?'block':'none';el.style.left=Math.max(0,Math.min(innerWidth-24,r.left+(n%terminal.cols)*w-12))+'px';el.style.top=Math.min(innerHeight-28,r.top+(y+1)*h)+'px';}
- tools.style.display='block';tools.style.left='8px';const top=r.top+(Math.floor(a/terminal.cols)-v)*h-55;tools.style.top=Math.min(innerHeight-54,top<4?top+55+h+32:top)+'px';
+ const hasText=terminal.getSelection().trim().length>0;
+ for(const [el,n] of [[first,a],[last,b]]){
+  const y=Math.floor(n/terminal.cols)-v;
+  el.style.display=hasText&&y>=0&&y<terminal.rows?'block':'none';
+  el.style.left=Math.max(0,Math.min(innerWidth-38,r.left+(n%terminal.cols)*w-19))+'px';
+  el.style.top=Math.min(innerHeight-44,r.top+(y+1)*h)+'px';
+ }
+ if(dragging)return;
+ const y=Math.max(0,Math.min(terminal.rows-1,Math.floor(a/terminal.cols)-v));
+ if(typeof Host.selectionMenu==='function'){
+  tools.style.display='none';
+  Host.selectionMenu(Math.max(0,r.left+(a%terminal.cols)*w)/innerWidth,
+   (r.top+y*h)/innerHeight,Math.min(innerWidth,r.right)/innerWidth,
+   Math.min(innerHeight,r.top+(y+1)*h)/innerHeight,hasText);
+ }else{
+  tools.style.display='block';tools.style.left='8px';
+  const top=r.top+y*h-55;tools.style.top=Math.min(innerHeight-54,top<4?top+55+h+32:top)+'px';
+ }
 }
 function longPress(x,y){
  selecting=true;anchor=cell(x,y);extent=anchor+1;
@@ -49,15 +73,35 @@ function longPress(x,y){
 }
 // Own touch gestures so xterm's mouse selection and Android's contextmenu
 // cannot turn a scroll into a selection. Only a stationary hold selects text.
+let flingFrame=0,flingVelocity=0,flingRemainder=0;
+function stopFling(){cancelAnimationFrame(flingFrame);flingFrame=0;flingVelocity=0;flingRemainder=0;}
+function startFling(velocity){
+ stopFling();if(Math.abs(velocity)<0.08)return;
+ flingVelocity=Math.max(-3,Math.min(3,velocity));let previous=performance.now();
+ const step=now=>{
+  const dt=Math.min(32,now-previous);previous=now;
+  flingRemainder+=flingVelocity*dt;
+  const h=geometry().h,lines=Math.trunc(flingRemainder/h);
+  if(lines){
+   const before=terminal.buffer.active.viewportY;terminal.scrollLines(lines);flingRemainder-=lines*h;
+   if(before===terminal.buffer.active.viewportY){stopFling();return;}
+  }
+  flingVelocity*=Math.exp(-dt/220);
+  if(Math.abs(flingVelocity)<0.025){stopFling();return;}
+  flingFrame=requestAnimationFrame(step);
+ };
+ flingFrame=requestAnimationFrame(step);
+}
+window.deactivateTerminal=()=>{endGesture();stopFling();hideSelection();};
 let timer=null,touch=null,lastTouchTime=0;
 const area=document.getElementById('terminal');
 function cancelHold(){clearTimeout(timer);timer=null;}
 function endGesture(){cancelHold();touch=null;lastTouchTime=Date.now();}
 area.addEventListener('touchstart',e=>{
- e.preventDefault();e.stopImmediatePropagation();lastTouchTime=Date.now();cancelHold();
+ e.preventDefault();e.stopImmediatePropagation();lastTouchTime=Date.now();cancelHold();stopFling();
  if(e.touches.length!==1){touch=null;return;}
  const t=e.touches[0];
- touch={x:t.clientX,y:t.clientY,lastY:t.clientY,remainder:0,moved:false,held:false,dismissed:selecting};
+ touch={x:t.clientX,y:t.clientY,lastY:t.clientY,remainder:0,moved:false,held:false,dismissed:selecting,lastTime:performance.now(),velocity:0};
  timer=setTimeout(()=>{
   timer=null;if(!touch||touch.moved)return;
   touch.held=true;longPress(touch.x,touch.y);
@@ -71,7 +115,8 @@ area.addEventListener('touchmove',e=>{
   cancelHold();if(!touch.moved){touch.moved=true;hideSelection();}
  }
  if(touch.moved){
-  const h=geometry().h;
+  const h=geometry().h,now=performance.now(),dt=Math.max(1,now-touch.lastTime);
+  touch.velocity=0.4*touch.velocity+0.6*(touch.lastY-t.clientY)/dt;touch.lastTime=now;
   touch.remainder+=touch.lastY-t.clientY;
   const lines=Math.trunc(touch.remainder/h);
   if(lines){terminal.scrollLines(lines);touch.remainder-=lines*h;}
@@ -80,7 +125,8 @@ area.addEventListener('touchmove',e=>{
 },{passive:false,capture:true});
 area.addEventListener('touchend',e=>{
  e.preventDefault();e.stopImmediatePropagation();
- if(touch&&!touch.moved&&!touch.held){hideSelection();if(!touch.dismissed)terminal.focus();}
+ if(touch&&!touch.moved&&!touch.held){hideSelection();if(!touch.dismissed){terminal.focus();if(typeof Host.keyboard==='function')Host.keyboard();}}
+ if(touch?.moved&&performance.now()-touch.lastTime<100)startFling(touch.velocity);
  endGesture();
 },{passive:false,capture:true});
 area.addEventListener('touchcancel',e=>{e.stopImmediatePropagation();endGesture();},{capture:true});
@@ -93,15 +139,45 @@ area.addEventListener('contextmenu',e=>{
  if(Date.now()-lastTouchTime>1000&&e.button===2)longPress(e.clientX,e.clientY);
 });
 for(const [el,isStart] of [[first,true],[last,false]]){
- el.addEventListener('pointerdown',e=>{el.setPointerCapture(e.pointerId);e.preventDefault();});
- el.addEventListener('pointermove',e=>{if(!el.hasPointerCapture(e.pointerId))return;const n=cell(e.clientX,e.clientY-16);if(isStart)anchor=Math.min(n,extent-1);else extent=Math.max(n+1,anchor+1);renderSelection();});
+ let edgeTimer=null,point=null;
+ const update=()=>{
+  if(!point)return;
+  const {r}=geometry();
+  if(point.y<r.top+18)terminal.scrollLines(-1);
+  else if(point.y>r.bottom-18)terminal.scrollLines(1);
+  const n=cell(point.x,point.y-12);
+  if(isStart)anchor=Math.min(n,extent-1);else extent=Math.max(n+1,anchor+1);
+  renderSelection();
+ };
+ el.addEventListener('pointerdown',e=>{
+  stopFling();dragging=true;hideToolbar();el.setPointerCapture(e.pointerId);e.preventDefault();
+  edgeTimer=setInterval(update,60);
+ });
+ el.addEventListener('pointermove',e=>{
+  if(!el.hasPointerCapture(e.pointerId))return;point={x:e.clientX,y:e.clientY};update();
+ });
+ const end=()=>{clearInterval(edgeTimer);edgeTimer=null;point=null;dragging=false;if(selecting)renderSelection();};
+ el.addEventListener('pointerup',end);el.addEventListener('pointercancel',end);
+ el.addEventListener('lostpointercapture',()=>{if(dragging)end();});
 }
-document.getElementById('copy').onclick=()=>{Host.copySelection(terminal.getSelection());hideSelection();};
-document.getElementById('paste').onclick=()=>Host.pasteClipboard();
-document.getElementById('all').onclick=()=>{anchor=0;extent=terminal.buffer.active.length*terminal.cols;renderSelection();};
-document.getElementById('close').onclick=hideSelection;
-window.pasteText=text=>{hideSelection();pasting=true;try{terminal.paste(text);}finally{pasting=false;}terminal.focus();};
-terminal.onScroll(()=>{if(selecting)renderSelection();});
+window.selectionAction=action=>{
+ if(action==='copy'){Host.copySelection(terminal.getSelection());hideSelection();}
+ else if(action==='paste')Host.pasteClipboard();
+ else if(action==='all'){anchor=0;extent=terminal.buffer.active.length*terminal.cols;renderSelection();}
+ else hideSelection();
+};
+for(const action of ['copy','paste','all','close'])document.getElementById(action).onclick=()=>window.selectionAction(action);
+window.pasteText=text=>{stopFling();hideSelection();pasting=true;try{terminal.paste(text);}finally{pasting=false;}terminal.focus();};
+let scrollThumbTimer=null;
+terminal.onScroll(()=>{
+ if(selecting)renderSelection();
+ const bar=document.getElementById('scroll-thumb'),buffer=terminal.buffer.active,{r}=geometry();
+ if(buffer.baseY>0){
+  const height=Math.max(24,r.height*terminal.rows/(buffer.baseY+terminal.rows));
+  bar.style.height=height+'px';bar.style.top=(r.top+(r.height-height)*buffer.viewportY/buffer.baseY)+'px';
+  bar.style.opacity='1';clearTimeout(scrollThumbTimer);scrollThumbTimer=setTimeout(()=>bar.style.opacity='0',800);
+ }
+});
 new ResizeObserver(()=>window.fitTerminal()).observe(area);
 window.addEventListener('resize',window.fitTerminal);Host.ready();
 </script></body></html>
