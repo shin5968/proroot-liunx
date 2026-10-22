@@ -30,7 +30,7 @@ static void global_remove(void *data, struct wl_registry *registry, uint32_t nam
     (void)data; (void)registry; (void)name;
 }
 static const struct wl_registry_listener listener = {global, global_remove};
-static void render_probe(VkPhysicalDevice gpu) {
+static int render_probe(VkPhysicalDevice gpu) {
     VkDevice device=VK_NULL_HANDLE; VkBuffer buffer=VK_NULL_HANDLE; VkDeviceMemory memory=VK_NULL_HANDLE;
     VkCommandPool pool=VK_NULL_HANDLE; VkFence fence=VK_NULL_HANDLE;
     VkResult result=VK_SUCCESS; const char *stage="queue"; int matched=0, exported=0;
@@ -97,15 +97,34 @@ done:
         vkDestroyDevice(device,NULL);
     }
 #undef TRY
+    return result==VK_SUCCESS && matched && exported;
+}
+static VKAPI_ATTR VkBool32 VKAPI_CALL debug_message(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
+    VkDebugUtilsMessageTypeFlagsEXT types,const VkDebugUtilsMessengerCallbackDataEXT *data,void *user) {
+    (void)severity;(void)types;(void)user;
+    fprintf(stderr,"Vulkan: %s\n",data->pMessage);
+    return VK_FALSE;
 }
 int main(void) {
     VkApplicationInfo app = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pApplicationName = "Proroot validation", .apiVersion = VK_API_VERSION_1_2};
-    VkInstanceCreateInfo create = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pApplicationInfo = &app};
+    const char *instance_extensions[]={"VK_EXT_debug_utils"};
+    VkDebugUtilsMessengerCreateInfoEXT debug={.sType=VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+        .messageSeverity=VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT|VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+        .messageType=VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT|VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT,
+        .pfnUserCallback=debug_message};
+    VkInstanceCreateInfo create = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pNext=&debug, .pApplicationInfo = &app,
+        .enabledExtensionCount=1,.ppEnabledExtensionNames=instance_extensions};
     VkInstance instance = VK_NULL_HANDLE;
     VkResult result = vkCreateInstance(&create, NULL, &instance);
     printf("{\"vkCreateInstance\":%d,\"devices\":[", result);
+    VkDebugUtilsMessengerEXT messenger=VK_NULL_HANDLE;
+    if(result==VK_SUCCESS){
+        PFN_vkCreateDebugUtilsMessengerEXT create_debug=(PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance,"vkCreateDebugUtilsMessengerEXT");
+        if(create_debug)create_debug(instance,&debug,NULL,&messenger);
+    }
     uint32_t count = 0;
-    if (result == VK_SUCCESS) vkEnumeratePhysicalDevices(instance, &count, NULL);
+    VkResult enumeration=result==VK_SUCCESS?vkEnumeratePhysicalDevices(instance,&count,NULL):result;
+    fprintf(stderr,"vkEnumeratePhysicalDevices: %d, count: %u\n",enumeration,count);
     VkPhysicalDevice *devices = calloc(count ? count : 1, sizeof(*devices));
     if (count) vkEnumeratePhysicalDevices(instance, &count, devices);
     for (uint32_t i = 0; i < count; ++i) {
@@ -128,8 +147,12 @@ int main(void) {
         free(extensions);
     }
     printf("]");
-    if(count)render_probe(devices[0]);
+    int gpu_ok=count?render_probe(devices[0]):0;
     free(devices);
+    if(messenger){
+        PFN_vkDestroyDebugUtilsMessengerEXT destroy_debug=(PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance,"vkDestroyDebugUtilsMessengerEXT");
+        if(destroy_debug)destroy_debug(instance,messenger,NULL);
+    }
     if (instance) vkDestroyInstance(instance, NULL);
     printf(",\"wayland\":{");
     const char *wayland = getenv("WAYLAND_DISPLAY");
@@ -152,5 +175,5 @@ int main(void) {
     } else printf("\"connected\":false,\"status\":\"NOT_TESTED_NO_X_SERVER\"");
     if (connection) xcb_disconnect(connection);
     printf("},\"end_to_end_zero_copy\":\"NOT_VERIFIED\"}\n");
-    return result == VK_SUCCESS && count > 0 ? 0 : 1;
+    return result == VK_SUCCESS && count > 0 && gpu_ok ? 0 : 1;
 }
