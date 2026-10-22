@@ -20,16 +20,17 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/mesa-venv"
           "$RUNNER_TEMP/mesa-venv/bin/pip" install meson==1.9.1 ninja==1.11.1.4 mako==1.3.10 packaging==25.0 pyyaml==6.0.2
           echo "$RUNNER_TEMP/mesa-venv/bin" >> "$GITHUB_PATH"
-      - name: Build compatible Wayland scanner without changing guest ABI
+      - name: Build pinned matching Wayland tools and runtime
         run: |
           git init "$RUNNER_TEMP/wayland"
           git -C "$RUNNER_TEMP/wayland" remote add origin https://github.com/wayland-mirror/wayland.git
           git -C "$RUNNER_TEMP/wayland" fetch --depth=1 origin 736d12ac67c20c60dc406dc49bb06be878501f86
           git -C "$RUNNER_TEMP/wayland" checkout --detach FETCH_HEAD
-          meson setup "$RUNNER_TEMP/wayland-build" "$RUNNER_TEMP/wayland" --prefix="$RUNNER_TEMP/wayland-tools" --libdir=lib -Dlibraries=false -Ddocumentation=false -Dtests=false -Ddtd_validation=false
+          meson setup "$RUNNER_TEMP/wayland-build" "$RUNNER_TEMP/wayland" --prefix="$RUNNER_TEMP/wayland-tools" --libdir=lib -Dlibraries=true -Ddocumentation=false -Dtests=false -Ddtd_validation=false
           ninja -C "$RUNNER_TEMP/wayland-build" install
           echo "$RUNNER_TEMP/wayland-tools/bin" >> "$GITHUB_PATH"
           echo "PKG_CONFIG_PATH=$RUNNER_TEMP/wayland-tools/lib/pkgconfig:$RUNNER_TEMP/wayland-tools/share/pkgconfig" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$RUNNER_TEMP/wayland-tools/lib" >> "$GITHUB_ENV"
       - name: Fetch exact user-selected branch revision
         run: |
           git init "$RUNNER_TEMP/radv"
@@ -43,6 +44,10 @@ jobs:
           sh build.sh
           mkdir -p "$GITHUB_WORKSPACE/graphics-dist"
           cp dist/*.zip "$GITHUB_WORKSPACE/graphics-dist/"
+          mkdir -p "$GITHUB_WORKSPACE/graphics-dist/wayland"
+          cp "$RUNNER_TEMP"/wayland-tools/lib/libwayland-client.so.0* "$GITHUB_WORKSPACE/graphics-dist/wayland/"
+          cp "$RUNNER_TEMP"/wayland-tools/lib/libwayland-server.so.0* "$GITHUB_WORKSPACE/graphics-dist/wayland/"
+          cp "$RUNNER_TEMP/wayland/COPYING" "$GITHUB_WORKSPACE/graphics-dist/wayland/LICENSE"
           readelf -d build-glibc/libvulkan_radeon.so > "$GITHUB_WORKSPACE/graphics-dist/driver-dynamic.txt"
           readelf --version-info build-glibc/libvulkan_radeon.so > "$GITHUB_WORKSPACE/graphics-dist/driver-versions.txt"
           printf '%s\n' d29b3afcecc542119bd548308a34e8dead6f5655 > "$GITHUB_WORKSPACE/graphics-dist/SOURCE_COMMIT"
