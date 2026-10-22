@@ -5,6 +5,8 @@ on:
     paths:
       - '.github/workflows/radv-glibc.yml'
       - 'scripts/graphics/explicit-render-node.patch'
+      - 'scripts/graphics/proroot-native-drm.c'
+      - 'scripts/graphics/prepare-radv.py'
 permissions:
   contents: read
 jobs:
@@ -41,6 +43,7 @@ jobs:
       - name: Apply opt-in Android render-node discovery
         run: |
           git -C "$RUNNER_TEMP/radv" apply "$GITHUB_WORKSPACE/scripts/graphics/explicit-render-node.patch"
+          python3 scripts/graphics/prepare-radv.py "$RUNNER_TEMP/radv" "$GITHUB_WORKSPACE/scripts/graphics"
       - name: Build pinned glibc driver with recorded patch
         run: |
           cd "$RUNNER_TEMP/radv"
@@ -56,7 +59,8 @@ jobs:
           printf '%s\n' d29b3afcecc542119bd548308a34e8dead6f5655 > "$GITHUB_WORKSPACE/graphics-dist/SOURCE_COMMIT"
           cp "$GITHUB_WORKSPACE/scripts/graphics/explicit-render-node.patch" "$GITHUB_WORKSPACE/graphics-dist/"
           cd "$GITHUB_WORKSPACE/graphics-dist"
-          sha256sum explicit-render-node.patch > PATCH_SHA256
+          cp "$GITHUB_WORKSPACE"/scripts/graphics/proroot-native-drm.c "$GITHUB_WORKSPACE"/scripts/graphics/prepare-radv.py .
+          sha256sum explicit-render-node.patch proroot-native-drm.c prepare-radv.py > PATCH_SHA256
           sha256sum *.zip > SHA256SUMS
       - name: Build Linux probes
         run: |
