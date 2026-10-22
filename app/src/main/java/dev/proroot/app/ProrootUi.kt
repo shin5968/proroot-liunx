@@ -107,6 +107,7 @@ fun ProrootShell(
                 }
                 "desktop" -> {
                     Header("데스크톱", "GUI 환경")
+                    PrimaryButton("Vulkan · AHB 실제 검증", { navigate("graphics") })
                     CardBox { Text("GUI 연결 준비 중", color = colors.primary, fontWeight = FontWeight.SemiBold); Spacer(Modifier.height(6.dp)); Muted("선호하는 환경만 저장해요. 아직 설치하거나 실행하지 않습니다.", 13) }
                     Text("어떤 데스크톱을 선호하세요?", fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
                     var selected by remember(desktop) { mutableStateOf(desktop) }

@@ -140,7 +140,7 @@ class MainActivity : ComponentActivity() {
                             startTerminal = preferences.getBoolean("startTerminal", false),
                             desktop = preferences.getString("desktop", "XFCE") ?: "XFCE",
                             runtimeAvailable = missingRuntime().isEmpty(),
-                            navigate = { if (it == "terminal") openTerminal() else screen = it },
+                            navigate = { if (it == "terminal") openTerminal() else if (it == "graphics") startActivity(android.content.Intent(this@MainActivity, GraphicsActivity::class.java)) else screen = it },
                             launch = { openTerminal() },
                             setDark = { dark = it; preferences.edit().putBoolean("dark", it).apply() },
                             setFont = { fontSize = it.coerceIn(10, 24); preferences.edit().putInt("fontSize", fontSize).apply() },
