@@ -69,9 +69,7 @@ class GraphicsActivity : ComponentActivity() {
                     result = text; busy = false
                     File(filesDir, "graphics-linux-report.json").writeText(text)
                 } })
-            val command = "export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/radeon_xclipse_icd.aarch64.json; " +
-                "export PROROOT_DRM_RENDER_NODE=/dev/dri/renderD128 PROROOT_NATIVE_DRM=1; " +
-                "export RADV_XCLIPSE_LOG=1; " +
+            val command = "export RADV_XCLIPSE_LOG=1; " +
                 "/usr/local/bin/proroot-graphics-probe > /root/graphics-linux-report.json 2>/root/graphics-linux-stderr.log; exit\n"
             linuxSession?.write(command.toByteArray(Charsets.UTF_8))
             window.decorView.postDelayed({

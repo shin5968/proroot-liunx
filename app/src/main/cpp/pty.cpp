@@ -28,6 +28,10 @@ Java_dev_proroot_app_NativePty_start(JNIEnv* env, jobject, jstring launcherArg, 
     int slave = open(slaveName, O_RDWR | O_NOCTTY | O_CLOEXEC);
     if (slave < 0) { fail(env, "open slave"); close(master); return nullptr; }
     std::string temporary = "PROROOT_TMP_DIR=" + tmp;
+    // Decide before fork; Android's diagnostic shell must retain its own driver.
+    const bool radvInstalled = !launcher.empty() &&
+        access((root + "/usr/share/vulkan/icd.d/radeon_xclipse_icd.aarch64.json").c_str(), R_OK) == 0 &&
+        access((root + "/usr/lib/xclipse/libvulkan_radeon.so").c_str(), R_OK) == 0;
     pid_t pid = fork();
     if (pid < 0) { fail(env, "fork"); close(master); close(slave); return nullptr; }
     if (pid == 0) {
@@ -40,7 +44,12 @@ Java_dev_proroot_app_NativePty_start(JNIEnv* env, jobject, jstring launcherArg, 
         char path[] = "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/system/bin";
         char lang[] = "LANG=C.UTF-8";
         char home[] = "HOME=/root";
-        char* environment[] = {term, path, lang, home, temporary.data(), nullptr};
+        char driver[] = "VK_DRIVER_FILES=/usr/share/vulkan/icd.d/radeon_xclipse_icd.aarch64.json";
+        char legacyDriver[] = "VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_xclipse_icd.aarch64.json";
+        char renderNode[] = "PROROOT_DRM_RENDER_NODE=/dev/dri/renderD128";
+        char nativeDrm[] = "PROROOT_NATIVE_DRM=1";
+        char* environment[] = {term, path, lang, home, temporary.data(),
+            radvInstalled ? driver : nullptr, legacyDriver, renderNode, nativeDrm, nullptr};
         if (launcher.empty()) {
             char shell[] = "/system/bin/sh"; char interactive[] = "-i";
             char* args[] = {shell, interactive, nullptr};

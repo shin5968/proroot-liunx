@@ -42,5 +42,15 @@ if [ "$#" = 0 ]; then set -- vulkaninfo --summary; fi
 exec "$@"
 WRAPPER
 chmod 755 /usr/local/bin/proroot-radv
-printf '%s\n' 'Installed. Run: proroot-radv vulkaninfo --summary'
+mkdir -p /etc/profile.d
+cat > /etc/profile.d/proroot-radv.sh <<'PROFILE'
+if [ -r /usr/lib/xclipse/libvulkan_radeon.so ] && [ -r /usr/share/vulkan/icd.d/radeon_xclipse_icd.aarch64.json ]; then
+    export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/radeon_xclipse_icd.aarch64.json
+    export VK_ICD_FILENAMES="$VK_DRIVER_FILES"
+    export PROROOT_DRM_RENDER_NODE=/dev/dri/renderD128
+    export PROROOT_NATIVE_DRM=1
+fi
+PROFILE
+printf '%s\n' 'Installed. Open a new terminal, then run: vulkaninfo --summary'
+printf '%s\n' 'For this existing shell: . /etc/profile.d/proroot-radv.sh'
 printf '%s\n' 'Presentation and end-to-end zero-copy must be validated separately.'

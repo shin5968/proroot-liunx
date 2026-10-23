@@ -21,11 +21,12 @@ Download and extract the `radv-glibc-arm64` artifact from **RADV glibc ARM64**, 
 
 ```sh
 sh install-radv.sh /path/to/extracted-artifact
-proroot-radv vulkaninfo --summary
-proroot-radv /usr/local/bin/proroot-graphics-probe
+. /etc/profile.d/proroot-radv.sh # current shell; new app sessions select RADV automatically
+vulkaninfo --summary
+/usr/local/bin/proroot-graphics-probe
 ```
 
-The installer is `scripts/graphics/install-radv.sh`. The wrapper explicitly selects this ICD; it does not silently substitute lavapipe. The guest must have the Vulkan loader, XCB/X11 client libraries, libelf, libxshmfence, libstdc++ and libffi. Install missing dependencies from the distribution's package manager.
+The installer is `scripts/graphics/install-radv.sh`. App 0.4.1 and later select the installed Xclipse ICD and native DRM path for every new guest PTY, including the graphics diagnostic. Selection requires both the driver library and ICD file; fresh rootfs sessions and the Android diagnostic shell retain their normal environment. Child processes inherit these defaults. `/etc/profile.d/proroot-radv.sh` also supplies defaults to login shells after installation. The `proroot-radv` wrapper remains available for compatibility. The guest must have the Vulkan loader, XCB/X11 client libraries, libelf, libxshmfence, libstdc++ and libffi. Install missing dependencies from the distribution's package manager.
 
 The graphics screen in the Android app separately runs:
 - **Android host**: allocate AHB, transfer its handle through a Unix socket pair, import into Vulkan, GPU-clear the image, release ownership, wait for the test fence and submit that same AHB through SurfaceControl;
