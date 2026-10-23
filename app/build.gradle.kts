@@ -12,8 +12,8 @@ android {
         minSdk = 26
         // Prototype compatibility: rootfs executables in app data require this legacy target.
         targetSdk = 28
-        versionCode = 11
-        versionName = "0.4.1"
+        versionCode = 12
+        versionName = "0.5.0"
         ndk { abiFilters += "arm64-v8a" }
         externalNativeBuild { cmake { cppFlags += "-std=c++17" } }
     }

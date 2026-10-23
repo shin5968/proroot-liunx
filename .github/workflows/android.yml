@@ -6,7 +6,26 @@ on:
 permissions:
   contents: read
 jobs:
+  wayland-runtime:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Wayland build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libffi-dev libexpat1-dev python3-venv
+          python3 -m venv "$RUNNER_TEMP/wayland-venv"
+          "$RUNNER_TEMP/wayland-venv/bin/pip" install meson==1.9.1 ninja==1.11.1.4
+          echo "$RUNNER_TEMP/wayland-venv/bin" >> "$GITHUB_PATH"
+      - name: Build bundled guest compositor and client
+        run: bash scripts/wayland/build.sh "$GITHUB_WORKSPACE/wayland-dist"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wayland-runtime-arm64
+          path: wayland-dist/
+          if-no-files-found: error
   debug-apk:
+    needs: wayland-runtime
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -32,6 +51,12 @@ jobs:
           gradle-version: '8.9'
       - name: Fetch verified Proroot binaries
         run: bash scripts/fetch-proroot.sh
+      - uses: actions/download-artifact@v4
+        with:
+          name: wayland-runtime-arm64
+          path: app/src/main/assets/wayland
+      - name: Verify bundled Wayland runtime
+        run: cd app/src/main/assets/wayland && sha256sum -c SHA256SUMS
       - name: Download rootfs extraction test fixture
         run: |
           curl --fail --location --retry 3 'https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.5-base-arm64.tar.gz' -o "$RUNNER_TEMP/ubuntu-rootfs.tar.gz"

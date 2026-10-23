@@ -46,7 +46,7 @@ fun ProrootShell(
                     Spacer(Modifier.height(4.dp))
                     LaunchCard(if (installer.state.installed) "터미널 열기" else "Ubuntu 설치하고 시작",
                         if (running) "실행 중인 세션으로 돌아갑니다" else if (installer.state.installed) "Linux 셸로 바로 이동합니다" else "Ubuntu Base를 먼저 준비해요", "terminal", true, launch)
-                    LaunchCard("데스크톱 모드", "GUI 연결을 준비하고 있어요", "desktop", false, { navigate("desktop") })
+                    LaunchCard("데스크톱 모드", "Wayland 화면 출력 · 그래픽 검증", "desktop", false, { navigate("desktop") })
                     Spacer(Modifier.height(4.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { Eyebrow("컨테이너"); Text("Linux 환경", fontSize = 19.sp, fontWeight = FontWeight.Medium) }
                     CardBox(onClick = { navigate("install") }) {
@@ -107,8 +107,9 @@ fun ProrootShell(
                 }
                 "desktop" -> {
                     Header("데스크톱", "GUI 환경")
+                    PrimaryButton("Wayland 화면 실행", { navigate("wayland") })
                     PrimaryButton("Vulkan · AHB 실제 검증", { navigate("graphics") })
-                    CardBox { Text("GUI 연결 준비 중", color = colors.primary, fontWeight = FontWeight.SemiBold); Spacer(Modifier.height(6.dp)); Muted("선호하는 환경만 저장해요. 아직 설치하거나 실행하지 않습니다.", 13) }
+                    CardBox { Text("Wayland 화면 출력", color = colors.primary, fontWeight = FontWeight.SemiBold); Spacer(Modifier.height(6.dp)); Muted("Linux Wayland 앱의 애니메이션을 Surface에 표시합니다. 현재 wl_shm 복사 경로이며, 아래 데스크톱 환경 설치는 아직 준비 중입니다.", 13) }
                     Text("어떤 데스크톱을 선호하세요?", fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
                     var selected by remember(desktop) { mutableStateOf(desktop) }
                     listOf("XFCE" to "가볍고 익숙한 데스크톱", "GNOME" to "간결하고 현대적인 환경", "KDE Plasma" to "유연한 맞춤형 데스크톱").forEach { (name, description) ->
