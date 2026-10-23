@@ -44,7 +44,23 @@ X11 application -> DRI3/Present -> Xwayland -> Wayland compositor
 Wayland compositor / Android presenter -> AHB -> SurfaceControl -> SurfaceFlinger
 ```
 
-The current implementation contains the driver build/integration probes and the Android AHB presenter test. A Wayland compositor, Xwayland server and full application presentation bridge are NOT implemented yet. Desktop entries remain marked as preparing. Do not interpret the test rectangle as a Linux desktop.
+App 0.5.0 adds an app-managed minimal Wayland compositor and Android Surface presenter. Open **데스크톱 → Wayland 화면 실행**. The bundled Linux client creates an xdg_toplevel and animated wl_shm buffers; these are actually submitted over the Wayland socket and displayed in SurfaceView. This is a single fullscreen output bootstrap, not XFCE/GNOME/KDE or a general desktop shell. Keyboard/touch input, subsurfaces, popups, GPU buffers and Xwayland remain future work.
+
+The compositor is a glibc ARM64 process inside Ubuntu, built with statically linked Wayland 1.24.0 and libffi. Android keeps its Bionic libraries separate. GitHub Actions builds the guest executables before packaging the APK; the rootfs still downloads separately. Wayland/libffi/protocol licenses and runtime hashes are included in `assets/wayland/`. The downloaded Ubuntu 24.04 rootfs supplies glibc. `scripts/wayland/build.sh` also supports a native Linux build for testing.
+
+Current output path:
+
+```text
+Linux demo -> wl_shm / xdg-shell -> guest compositor
+ -> CPU snapshot into sealed memfd -> Unix SCM_RIGHTS FD + frame metadata
+ -> Android mmap -> CPU pixel conversion/scaling -> ANativeWindow -> SurfaceView
+```
+
+The presenter checks same-UID peers, dimensions, stride, file size and seals before mapping. The compositor waits for a sequence ACK after Android queues the frame before releasing the client's wl_buffer. This is synchronous bootstrap backpressure, not asynchronous presentation-fence support. There are two CPU pixel copies; **this path is not zero-copy and does not validate RADV GUI presentation**. `wayland-report.json` explicitly reports `WL_SHM_CPU_COPY` and `NOT_VERIFIED`.
+
+The Wayland socket is `/tmp/proroot-wayland/wayland-proroot` inside the guest (`XDG_RUNTIME_DIR=/tmp/proroot-wayland`, `WAYLAND_DISPLAY=wayland-proroot`). The Android bridge socket is private under the same app's rootfs `/tmp/proroot-present.sock`. The activity stops its PTY process group and presenter on pause/surface destruction and starts a fresh session on resume; a persistent desktop foreground service is not yet provided. Restart and surface recreation reset the compositor and animation. Logs and counters are kept at app-private `files/wayland-session.log` and `files/wayland-report.json`.
+
+CI exercises real Wayland configure/ACK, buffer commits, frame callbacks, releases, sealed FD transport, changing pixel contents and restarting with the same socket name. Device testing remains necessary for Android presentation and Proroot behavior.
 
 The selected glibc driver disables Android AHB support at compile time (`radv_android.h`); it provides DMA-BUF external memory instead. Device extension names alone do not prove interoperability with Android AHB.
 

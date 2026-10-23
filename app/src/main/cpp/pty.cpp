@@ -8,6 +8,33 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <string>
+#include <dirent.h>
+#include <cstdio>
+#include <vector>
+#include <set>
+
+struct ProcessParent { pid_t pid; pid_t parent; };
+static std::vector<ProcessParent> processParents() {
+    std::vector<ProcessParent> result;
+    DIR* directory = opendir("/proc");
+    if (!directory) return result;
+    while (auto* entry = readdir(directory)) {
+        char* end = nullptr;
+        const long id = strtol(entry->d_name, &end, 10);
+        if (!end || *end || id <= 0) continue;
+        std::string path = std::string("/proc/") + entry->d_name + "/stat";
+        int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
+        if (fd < 0) continue;
+        char buffer[2048]; const ssize_t count = read(fd, buffer, sizeof(buffer) - 1); close(fd);
+        if (count <= 0) continue;
+        buffer[count] = 0;
+        const char* tail = strrchr(buffer, ')');
+        char state; int parent;
+        if (tail && sscanf(tail + 1, " %c %d", &state, &parent) == 2)
+            result.push_back({static_cast<pid_t>(id), static_cast<pid_t>(parent)});
+    }
+    closedir(directory); return result;
+}
 
 static std::string stringOf(JNIEnv* env, jstring value) {
     const char* p = env->GetStringUTFChars(value, nullptr);
@@ -82,6 +109,30 @@ Java_dev_proroot_app_NativePty_waitFor(JNIEnv*, jobject, jint pid) {
 }
 extern "C" JNIEXPORT void JNICALL
 Java_dev_proroot_app_NativePty_stop(JNIEnv*, jobject, jint pid) {
-    if (pid > 0) { kill(-pid, SIGHUP); kill(-pid, SIGKILL); kill(pid, SIGKILL); }
+    if (pid <= 0) return;
+    // Proroot's bridge children may create their own process groups. Killing only
+    // the launcher's group left an orphaned Bash spinning in wait() on Android.
+    // Freeze this session's actual descendants before terminating child-first.
+    std::set<pid_t> owned{pid};
+    auto snapshot = processParents();
+    bool child = false;
+    for (const auto& process : snapshot) if (process.pid == pid && process.parent == getpid()) child = true;
+    if (!child) return;
+    kill(pid, SIGSTOP);
+    std::vector<pid_t> order{pid};
+    for (int pass = 0; pass < 16; ++pass) {
+        bool changed = false, added;
+        do {
+            added = false;
+            for (const auto& process : snapshot) {
+                if (owned.count(process.parent) && owned.insert(process.pid).second) {
+                    kill(process.pid, SIGSTOP); order.push_back(process.pid); added = changed = true;
+                }
+            }
+        } while (added);
+        if (!changed && pass > 0) break;
+        snapshot = processParents();
+    }
+    for (auto it = order.rbegin(); it != order.rend(); ++it) kill(*it, SIGKILL);
 }
 

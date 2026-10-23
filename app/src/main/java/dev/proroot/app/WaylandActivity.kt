@@ -112,8 +112,8 @@ class WaylandActivity : ComponentActivity() {
                         TextButton(onClick = { stopSession(); startIfReady() }) { Text("재시작") }
                         TextButton(onClick = { finish() }) { Text("닫기") }
                     }
-                    Text(status, Modifier.padding(horizontal = 16.dp), color = Color.White)
-                    Text(detail, Modifier.padding(16.dp), color = Color(0xFFB6CDBF), style = MaterialTheme.typography.bodySmall)
+                    Text(status, Modifier.fillMaxWidth().height(32.dp).padding(horizontal = 16.dp), maxLines = 1, color = Color.White)
+                    Text(detail, Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 16.dp, vertical = 8.dp), maxLines = 2, color = Color(0xFFB6CDBF), style = MaterialTheme.typography.bodySmall)
                     AndroidView(factory = { context -> SurfaceView(context).apply {
                         holder.addCallback(object : SurfaceHolder.Callback {
                             override fun surfaceCreated(h: SurfaceHolder) { this@WaylandActivity.holder = h }
