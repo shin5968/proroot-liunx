@@ -17,7 +17,8 @@ xml="$repo/scripts/wayland/xdg-shell.xml"
 "$scanner" client-header "$xml" "$work/xdg-shell-client-protocol.h"
 "$scanner" private-code "$xml" "$work/xdg-shell-protocol.c"
 flags=(-std=c11 -O2 -Wall -Wextra -Werror -I"$work" -I"$work/install/include" -I"$repo/app/src/main/cpp")
-ffi=$(pkg-config --variable=libdir libffi)/libffi.a
+ffi=$(cc -print-file-name=libffi.a)
+test -f "$ffi"
 cc "${flags[@]}" "$repo/scripts/wayland/compositor.c" "$work/xdg-shell-protocol.c" \
   "$work/install/lib/libwayland-server.a" "$ffi" -lm -pthread -o "$out/proroot-wayland"
 cc "${flags[@]}" "$repo/scripts/wayland/demo.c" "$work/xdg-shell-protocol.c" \

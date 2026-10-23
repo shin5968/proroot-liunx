@@ -70,7 +70,7 @@ class WaylandActivity : ComponentActivity() {
                         File(filesDir, "wayland-session.log").writeText(log)
                     } },
                     exited = { code -> runOnUiThread {
-                        if (token == generation) { status = "Wayland 세션 종료 ($code)"; detail = "재시작으로 다시 실행할 수 있습니다." }
+                        if (token == generation) { stopSession(); status = "Wayland 세션 종료 ($code)"; detail = "재시작으로 다시 실행할 수 있습니다." }
                     } })
                 session?.write("exec /bin/bash /usr/local/libexec/wayland-session.sh $w $h\n".toByteArray())
                 runOnUiThread { if (token == generation) poll(token) }

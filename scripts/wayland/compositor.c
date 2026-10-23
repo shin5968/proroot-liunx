@@ -24,6 +24,7 @@ struct surface {
     struct wl_listener buffer_destroy;
     struct wl_list callbacks;
     bool attached, configured, acknowledged;
+    uint32_t configure_serial;
 };
 static void destroy_request(struct wl_client *c, struct wl_resource *r) { (void)c; wl_resource_destroy(r); }
 static void buffer_gone(struct wl_listener *listener, void *data) {
@@ -104,7 +105,8 @@ static void configure(struct surface *s) {
     if (!state) { wl_resource_post_no_memory(s->top); return; }
     *state = XDG_TOPLEVEL_STATE_ACTIVATED;
     xdg_toplevel_send_configure(s->top, width, height, &states); wl_array_release(&states);
-    xdg_surface_send_configure(s->xdg, wl_display_next_serial(display)); s->configured = true;
+    s->configure_serial = wl_display_next_serial(display);
+    xdg_surface_send_configure(s->xdg, s->configure_serial); s->configured = true;
 }
 static void commit(struct wl_client *c, struct wl_resource *r) {
     struct surface *s = wl_resource_get_user_data(r);
@@ -182,7 +184,9 @@ static void get_popup(struct wl_client *c, struct wl_resource *r, uint32_t id, s
 }
 static void geometry(struct wl_client *c, struct wl_resource *r, int32_t x, int32_t y, int32_t w, int32_t h) { damage(c,r,x,y,w,h); }
 static void ack_configure(struct wl_client *c, struct wl_resource *r, uint32_t serial) {
-    (void)c; (void)serial; struct surface *s = wl_resource_get_user_data(r); if (s) s->acknowledged = s->configured;
+    (void)c; struct surface *s = wl_resource_get_user_data(r);
+    if (s && s->configured && serial == s->configure_serial) s->acknowledged = true;
+    else wl_resource_post_error(r, XDG_SURFACE_ERROR_INVALID_SERIAL, "unknown configure serial");
 }
 static const struct xdg_surface_interface xdg_impl = {.destroy = destroy_request, .get_toplevel = get_top, .get_popup = get_popup, .set_window_geometry = geometry, .ack_configure = ack_configure};
 static void get_xdg(struct wl_client *c, struct wl_resource *r, uint32_t id, struct wl_resource *surface) {

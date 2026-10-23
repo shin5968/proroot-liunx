@@ -19,6 +19,8 @@ jobs:
           echo "$RUNNER_TEMP/wayland-venv/bin" >> "$GITHUB_PATH"
       - name: Build bundled guest compositor and client
         run: bash scripts/wayland/build.sh "$GITHUB_WORKSPACE/wayland-dist"
+      - name: Verify Wayland frames and compositor restart
+        run: python3 scripts/wayland/test-output.py wayland-dist
       - uses: actions/upload-artifact@v4
         with:
           name: wayland-runtime-arm64
