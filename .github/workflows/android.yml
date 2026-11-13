@@ -80,7 +80,12 @@ jobs:
           name: hybris-runtime-arm64
           path: app/src/main/assets/hybris
       - name: Verify bundled libhybris runtime
-        run: cd app/src/main/assets/hybris && sha256sum -c SHA256SUMS && test -f libhybris-glibc-arm64.tar.gz
+        run: |
+          cd app/src/main/assets/hybris
+          sha256sum -c SHA256SUMS
+          # Android packaging treats .gz assets specially; ship the verified bytes under a neutral name.
+          mv libhybris-glibc-arm64.tar.gz libhybris-glibc-arm64.bundle
+          rm -f install-hybris.sh
       - name: Download rootfs extraction test fixture
         run: |
           curl --fail --location --retry 3 'https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.5-base-arm64.tar.gz' -o "$RUNNER_TEMP/ubuntu-rootfs.tar.gz"
@@ -96,7 +101,8 @@ jobs:
           with zipfile.ZipFile('app/build/outputs/apk/debug/app-debug.apk') as apk:
               for source in pathlib.Path('app/src/main/jniLibs/arm64-v8a').glob('libproroot*.so'):
                   assert hashlib.sha256(apk.read('lib/arm64-v8a/' + source.name)).digest() == hashlib.sha256(source.read_bytes()).digest(), source.name
-              bundle = pathlib.Path('app/src/main/assets/hybris/libhybris-glibc-arm64.tar.gz')
+              bundle = pathlib.Path('app/src/main/assets/hybris/libhybris-glibc-arm64.bundle')
+              print(sorted(name for name in apk.namelist() if name.startswith('assets/hybris/')))
               assert apk.read('assets/hybris/' + bundle.name) == bundle.read_bytes(), bundle.name
           PY
       - uses: actions/upload-artifact@v4

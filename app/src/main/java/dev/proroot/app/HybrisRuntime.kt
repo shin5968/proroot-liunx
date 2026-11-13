@@ -6,7 +6,7 @@ import java.io.File
 
 /** Installs the libhybris bundle shipped in the APK into the guest rootfs. */
 object HybrisRuntime {
-    private const val ARCHIVE = "hybris/libhybris-glibc-arm64.tar.gz"
+    private const val ARCHIVE = "hybris/libhybris-glibc-arm64.bundle"
     private const val SUMS = "hybris/SHA256SUMS"
     private val lock = Any()
 
