@@ -41,6 +41,9 @@ class HybrisActivity : ComponentActivity() {
     private var token = 0
     private var busy by mutableStateOf(false)
     private var debug by mutableStateOf(false)
+    private var binds by mutableStateOf(true)
+    private val ptyLock = Any()
+    private var ptyText = ""
     private var install by mutableStateOf("확인 중")
     private var selection by mutableStateOf("")
     private var result by mutableStateOf("테스트를 선택하세요. 각 테스트는 새 게스트 세션에서 실행됩니다.")
@@ -50,7 +53,8 @@ class HybrisActivity : ComponentActivity() {
         worker.execute {
             val text = try { HybrisRuntime.ensureInstalled(this, root) } catch (error: Exception) { "설치 실패: ${error.message ?: error}" }
             val selected = HybrisRuntime.selection(root)
-            runOnUiThread { install = text; selection = selected; busy = false }
+            val bound = !File(root, "etc/proroot-hybris-nobind").exists()
+            runOnUiThread { install = text; selection = selected; binds = bound; busy = false }
         }
     }
     private fun choose(driver: String) {
@@ -67,16 +71,21 @@ class HybrisActivity : ComponentActivity() {
             if (current != token || isDestroyed) return
             token++
             session?.close(); session = null
-            val text = (log.takeIf { it.isFile }?.readText()?.takeLast(60000) ?: "(출력 없음)") + note
+            // Without a log the guest shell never ran the tests; the terminal output then holds the launcher error.
+            val terminal = synchronized(ptyLock) { ptyText }
+            val text = (log.takeIf { it.isFile }?.readText()?.takeLast(60000)
+                ?: ("(테스트 로그 없음 — 게스트 셸이 명령을 실행하지 못했습니다)\n호스트 경로 바인드: ${if (binds) "켜짐" else "꺼짐"}\n----- 세션 터미널 출력 -----\n" + terminal.ifBlank { "(없음)" })) + note
             result = text; busy = false
             try { File(filesDir, "hybris-test-report.txt").writeText(text) } catch (_: java.io.IOException) {}
         }
         try {
             File(root, "root").mkdirs(); log.delete()
+            synchronized(ptyLock) { ptyText = "" }
             File(root, "etc/proroot.bashrc").writeText(assets.open("proroot.bashrc").bufferedReader().use { it.readText() })
             File(filesDir, "tmp").mkdirs()
             session = PtySession(File(applicationInfo.nativeLibraryDir, "libproroot.so").absolutePath,
-                root.absolutePath, File(filesDir, "tmp").absolutePath, output = {},
+                root.absolutePath, File(filesDir, "tmp").absolutePath,
+                output = { bytes -> synchronized(ptyLock) { ptyText = (ptyText + bytes.toString(Charsets.UTF_8)).takeLast(8000) } },
                 exited = { code -> runOnUiThread { finish("\n[세션 종료 $code]") } })
             val body = selected.joinToString("; ") { "echo; echo '===== ${it.title} ====='; ${it.command}" }
             val prefix = if (debug) "export HYBRIS_LOGGING_LEVEL=debug; " else ""
@@ -106,6 +115,16 @@ class HybrisActivity : ComponentActivity() {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = debug, onCheckedChange = { debug = it })
                         Text("libhybris 디버그 로그 포함", color = Color.White, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = binds, enabled = !busy, onCheckedChange = { enabled ->
+                            try {
+                                val marker = File(root, "etc/proroot-hybris-nobind")
+                                if (enabled) marker.delete() else { marker.parentFile?.mkdirs(); marker.writeText("") }
+                                binds = enabled
+                            } catch (error: Exception) { result = "설정 실패: $error" }
+                        })
+                        Text("Android 드라이버 경로 바인드 (/system, /vendor 등)", color = Color.White, style = MaterialTheme.typography.bodyMedium)
                     }
                     Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Button(enabled = ready, onClick = { run(tests) }, modifier = Modifier.fillMaxWidth()) { Text("전체 테스트 실행") }
