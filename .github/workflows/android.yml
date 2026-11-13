@@ -26,8 +26,24 @@ jobs:
           name: wayland-runtime-arm64
           path: wayland-dist/
           if-no-files-found: error
+  hybris-runtime:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install libhybris build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential autoconf automake libtool pkg-config libwayland-dev libwayland-egl-backend-dev libvulkan-dev libegl-dev libgles-dev
+      - name: Build pinned libhybris bundle
+        run: bash scripts/graphics/build-hybris.sh "$RUNNER_TEMP/hybris-work" "$GITHUB_WORKSPACE/hybris-dist"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hybris-runtime-arm64
+          path: hybris-dist/
+          if-no-files-found: error
   debug-apk:
-    needs: wayland-runtime
+    needs: [wayland-runtime, hybris-runtime]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -59,6 +75,12 @@ jobs:
           path: app/src/main/assets/wayland
       - name: Verify bundled Wayland runtime
         run: cd app/src/main/assets/wayland && sha256sum -c SHA256SUMS
+      - uses: actions/download-artifact@v4
+        with:
+          name: hybris-runtime-arm64
+          path: app/src/main/assets/hybris
+      - name: Verify bundled libhybris runtime
+        run: cd app/src/main/assets/hybris && sha256sum -c SHA256SUMS && test -f libhybris-glibc-arm64.tar.gz
       - name: Download rootfs extraction test fixture
         run: |
           curl --fail --location --retry 3 'https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.5-base-arm64.tar.gz' -o "$RUNNER_TEMP/ubuntu-rootfs.tar.gz"
@@ -74,6 +96,8 @@ jobs:
           with zipfile.ZipFile('app/build/outputs/apk/debug/app-debug.apk') as apk:
               for source in pathlib.Path('app/src/main/jniLibs/arm64-v8a').glob('libproroot*.so'):
                   assert hashlib.sha256(apk.read('lib/arm64-v8a/' + source.name)).digest() == hashlib.sha256(source.read_bytes()).digest(), source.name
+              bundle = pathlib.Path('app/src/main/assets/hybris/libhybris-glibc-arm64.tar.gz')
+              assert apk.read('assets/hybris/' + bundle.name) == bundle.read_bytes(), bundle.name
           PY
       - uses: actions/upload-artifact@v4
         with:

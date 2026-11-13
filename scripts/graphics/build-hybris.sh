@@ -34,6 +34,12 @@ stage="$work/stage/usr/lib/hybris"
 # Headers, static archives and libtool files are not needed in the guest.
 rm -rf "$stage/include" "$stage/lib/pkgconfig" "$stage/share"
 find "$stage" \( -name '*.la' -o -name '*.a' \) -delete
+# Offscreen probe bound to the libhybris loader, independent of LD_LIBRARY_PATH.
+cc -O2 -Wall -Wextra -Werror "$here/hybris-probe.c" -o "$stage/bin/proroot-hybris-probe" \
+    -L"$stage/lib" -lvulkan -Wl,--enable-new-dtags,-rpath,/usr/lib/hybris/lib,-rpath-link,"$stage/lib"
+mkdir -p "$stage/share"
+install -m 755 "$here/hybris/proroot-driver" "$here/hybris/proroot-hybris" "$stage/share/"
+install -m 644 "$here/hybris/profile.sh" "$stage/share/"
 mkdir -p "$stage/licenses"
 cp "$work"/libhybris/LICENSE.* "$stage/licenses/"
 printf '%s\n' "$HYBRIS_COMMIT" > "$stage/SOURCE_COMMIT"

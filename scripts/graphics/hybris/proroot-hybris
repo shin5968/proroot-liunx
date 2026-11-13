@@ -1,0 +1,8 @@
+#!/bin/sh
+# Run one command with the Android vendor driver through libhybris.
+unset VK_DRIVER_FILES VK_ICD_FILENAMES PROROOT_NATIVE_DRM PROROOT_DRM_RENDER_NODE
+export LD_LIBRARY_PATH=/usr/lib/hybris/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+export HYBRIS_EGLPLATFORM=${HYBRIS_EGLPLATFORM:-wayland}
+export HYBRIS_VULKANPLATFORM=${HYBRIS_VULKANPLATFORM:-wayland}
+if [ "$#" = 0 ]; then set -- /usr/lib/hybris/bin/proroot-hybris-probe; fi
+exec "$@"

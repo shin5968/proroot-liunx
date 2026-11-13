@@ -10,3 +10,4 @@ app/src/main/jniLibs/arm64-v8a/*.so
 
 **/node_modules/
 app/src/main/assets/wayland/
+app/src/main/assets/hybris/

@@ -6,6 +6,8 @@ on:
       - '.github/workflows/libhybris-glibc.yml'
       - 'scripts/graphics/build-hybris.sh'
       - 'scripts/graphics/install-hybris.sh'
+      - 'scripts/graphics/hybris-probe.c'
+      - 'scripts/graphics/hybris/**'
 permissions:
   contents: read
 jobs:
@@ -26,6 +28,7 @@ jobs:
           cd hybris-dist && sha256sum -c SHA256SUMS
           tar -tzf libhybris-glibc-arm64.tar.gz | grep -q 'usr/lib/hybris/lib/libvulkan.so.1$'
           tar -tzf libhybris-glibc-arm64.tar.gz | grep -q 'usr/lib/hybris/lib/libhybris/linker/q.so$'
+          tar -tzf libhybris-glibc-arm64.tar.gz | grep -q 'usr/lib/hybris/bin/proroot-hybris-probe$'
       - uses: actions/upload-artifact@v4
         with:
           name: libhybris-glibc-arm64

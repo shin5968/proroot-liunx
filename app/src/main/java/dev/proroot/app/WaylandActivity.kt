@@ -60,6 +60,7 @@ class WaylandActivity : ComponentActivity() {
                 }
                 assets.open("wayland-session.sh").use { source -> File(libexec, "wayland-session.sh").outputStream().use { source.copyTo(it) } }
                 File(root, "etc/proroot.bashrc").writeText(assets.open("proroot.bashrc").bufferedReader().use { it.readText() })
+                try { HybrisRuntime.ensureInstalled(this, root) } catch (_: Exception) { /* optional driver */ }
                 File(root, "tmp").mkdirs()
                 File(filesDir, "tmp").mkdirs()
                 NativeWayland.start(surface, File(root, "tmp/proroot-present.sock").absolutePath)

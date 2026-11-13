@@ -17,25 +17,26 @@ The build artifact contains the source commit, patch/source hashes, original ups
 
 ## libhybris driver (Android vendor driver, default once installed)
 
-App 0.6.0 can run guest graphics on the device's own Android GPU driver through [libhybris](https://github.com/libhybris/libhybris), pinned to `7079712a42ea2754adf747e70c6cc75764c8596e` and built against [Halium android-headers](https://github.com/Halium/android-headers) `217a38e92cc64a96b4d1ac7469f30827d84485d3`. libhybris is a glibc library that loads Bionic libraries with its own copy of the Android linker; its `libvulkan.so.1`, `libEGL.so.1` and `libGLESv2.so.2` forward to the Android `/system` and `/vendor` implementations. It replaces the guest Vulkan loader for the session rather than adding an ICD, so RADV and libhybris are mutually exclusive per session.
+App 0.6.1 runs guest graphics on the device's own Android GPU driver through [libhybris](https://github.com/libhybris/libhybris), pinned to `7079712a42ea2754adf747e70c6cc75764c8596e` and built against [Halium android-headers](https://github.com/Halium/android-headers) `217a38e92cc64a96b4d1ac7469f30827d84485d3`. libhybris is a glibc library that loads Bionic libraries with its own copy of the Android linker; its `libvulkan.so.1`, `libEGL.so.1` and `libGLESv2.so.2` forward to the Android `/system` and `/vendor` implementations. It replaces the guest Vulkan loader for the session rather than adding an ICD, so RADV and libhybris are mutually exclusive per session.
 
-Download and extract the `libhybris-glibc-arm64` artifact from **libhybris glibc ARM64**, transfer it to the Ubuntu guest, then run:
+The APK bundles this build (`assets/hybris/`, built by the **Android APK** workflow and checked against its SHA-256). The app installs it into the rootfs the first time a guest terminal, the Wayland screen or the test menu starts, and reinstalls only when the bundled build changes. No separate download is needed.
 
-```sh
-sh install-hybris.sh /path/to/extracted-artifact
-# stop and restart the terminal session
-/usr/lib/hybris/bin/test_vulkan
-proroot-driver status          # hybris | radv | none
-proroot-driver radv            # return to RADV for new sessions
-```
+**데스크톱 → libhybris 드라이버 테스트** is the test menu. Each test runs in a fresh guest session and shows the raw output, which can be copied:
+1. environment: selected driver, `LD_LIBRARY_PATH`, and whether the Android driver paths are visible in the guest;
+2. Android property reads through libhybris;
+3. loading Bionic `libc.so`, `libEGL.so`, `libGLESv2.so` and `libvulkan.so` (`(nil)` means the load failed);
+4. `proroot-hybris-probe`: offscreen Vulkan instance, device enumeration and device creation, reporting which `libvulkan.so.1` was actually used;
+5. EGL config enumeration on the `null` platform.
 
-`scripts/graphics/install-hybris.sh` installs everything under `/usr/lib/hybris` and writes `/etc/proroot-driver`. No distribution library is overwritten. For a new guest PTY the app then:
+The menu also switches the driver (`hybris`, `radv`, `none`) and can add libhybris debug logging. The last report is kept at app-private `files/hybris-test-report.txt`. In a terminal the same switch is `proroot-driver hybris|radv|none|status`; restart the session afterwards. The standalone `libhybris-glibc-arm64` artifact and `install-hybris.sh` remain for installing a different build by hand.
+
+Everything is installed under `/usr/lib/hybris`; no distribution library is overwritten. libhybris is used unless `/etc/proroot-driver` says `radv` or `none`. For a new guest PTY the app then:
 - sets `LD_LIBRARY_PATH=/usr/lib/hybris/lib`, `HYBRIS_EGLPLATFORM=wayland`, `HYBRIS_VULKANPLATFORM=wayland` and omits the RADV variables;
 - binds the existing host trees `/system`, `/system_ext`, `/vendor`, `/odm`, `/product`, `/apex`, `/linkerconfig` and `/dev/__properties__` into the guest with Proroot `-b`, because the vendor driver is loaded from its original paths.
 
-With `radv` selected, or without libhybris installed, sessions behave exactly as before. `proroot-hybris COMMAND` runs a single command on libhybris from any session that has the host trees bound.
+With `radv` selected, sessions behave exactly as before. `proroot-hybris COMMAND` runs a single command on libhybris from any session that has the host trees bound.
 
-**Status: built and packaged, not yet verified on a device.** The build and bundle layout are checked in CI; loading the vendor driver is not. Known risks to validate on the S24:
+**Status: built, bundled and installed by default, not yet verified on a device.** Because it is now the default, an installed RADV is no longer selected automatically; choose `radv` in the test menu to return to it. The build and bundle layout are checked in CI; loading the vendor driver is not. Known risks to validate on the S24:
 - libhybris's newest bundled linker targets Android 10; newer Bionic/APEX layouts, linker namespaces and ELF features may fail to load. `HYBRIS_LD_LIBRARY_PATH`, `HYBRIS_LINKER_DIR` and `HYBRIS_LOGGING_LEVEL=debug` are the first things to adjust.
 - The process runs as the app UID in the untrusted-app SELinux domain. Property reads, gralloc/allocator HAL access and binder services that a system process would have may be denied.
 - An earlier test found Proroot's loader ignoring `LD_LIBRARY_PATH` for a Wayland library. If that recurs, the hybris libraries will not be picked up and the session falls back to the distribution's loader.

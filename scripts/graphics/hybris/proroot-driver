@@ -1,0 +1,12 @@
+#!/bin/sh
+# Select the guest GPU driver for NEW app sessions: hybris | radv | none
+file=/etc/proroot-driver
+case "${1:-status}" in
+    hybris) test -f /usr/lib/hybris/lib/libhybris/linker/q.so || { echo "libhybris is not installed" >&2; exit 1; } ;;
+    radv) test -f /usr/lib/xclipse/libvulkan_radeon.so || { echo "RADV is not installed" >&2; exit 1; } ;;
+    none) ;;
+    status) echo "selected: $(cat "$file" 2>/dev/null || echo auto)"; exit 0 ;;
+    *) echo "usage: proroot-driver hybris|radv|none|status" >&2; exit 2 ;;
+esac
+printf '%s\n' "$1" > "$file"
+echo "Selected $1. Stop and restart the terminal session to apply."

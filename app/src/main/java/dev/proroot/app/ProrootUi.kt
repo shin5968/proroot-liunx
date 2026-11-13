@@ -109,6 +109,7 @@ fun ProrootShell(
                     Header("데스크톱", "GUI 환경")
                     PrimaryButton("Wayland 화면 실행", { navigate("wayland") })
                     PrimaryButton("Vulkan · AHB 실제 검증", { navigate("graphics") })
+                    PrimaryButton("libhybris 드라이버 테스트", { navigate("hybris") })
                     CardBox { Text("Wayland 화면 출력", color = colors.primary, fontWeight = FontWeight.SemiBold); Spacer(Modifier.height(6.dp)); Muted("Linux Wayland 앱의 애니메이션을 Surface에 표시합니다. 현재 wl_shm 복사 경로이며, 아래 데스크톱 환경 설치는 아직 준비 중입니다.", 13) }
                     Text("어떤 데스크톱을 선호하세요?", fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
                     var selected by remember(desktop) { mutableStateOf(desktop) }

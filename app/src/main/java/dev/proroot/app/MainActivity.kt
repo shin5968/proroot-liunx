@@ -140,7 +140,7 @@ class MainActivity : ComponentActivity() {
                             startTerminal = preferences.getBoolean("startTerminal", false),
                             desktop = preferences.getString("desktop", "XFCE") ?: "XFCE",
                             runtimeAvailable = missingRuntime().isEmpty(),
-                            navigate = { if (it == "terminal") openTerminal() else if (it == "graphics") startActivity(android.content.Intent(this@MainActivity, GraphicsActivity::class.java)) else if (it == "wayland") startActivity(android.content.Intent(this@MainActivity, WaylandActivity::class.java)) else screen = it },
+                            navigate = { if (it == "terminal") openTerminal() else if (it == "graphics") startActivity(android.content.Intent(this@MainActivity, GraphicsActivity::class.java)) else if (it == "hybris") startActivity(android.content.Intent(this@MainActivity, HybrisActivity::class.java)) else if (it == "wayland") startActivity(android.content.Intent(this@MainActivity, WaylandActivity::class.java)) else screen = it },
                             launch = { openTerminal() },
                             setDark = { dark = it; preferences.edit().putBoolean("dark", it).apply() },
                             setFont = { fontSize = it.coerceIn(10, 24); preferences.edit().putInt("fontSize", fontSize).apply() },
@@ -324,6 +324,8 @@ class MainActivity : ComponentActivity() {
         try {
             if (!desiredHost) {
                 File(rootfs, "etc/proroot.bashrc").writeText(assets.open("proroot.bashrc").bufferedReader().use { it.readText() })
+                // One-time install of the bundled libhybris driver; a failure must not block the shell.
+                try { HybrisRuntime.ensureInstalled(this, rootfs) } catch (error: Exception) { line("libhybris 설치 실패: ${error.message}") }
             }
             session = PtySession(if (desiredHost) "" else launcher.absolutePath, rootfs.absolutePath, File(filesDir, "tmp").absolutePath,
                 output = { bytes ->
