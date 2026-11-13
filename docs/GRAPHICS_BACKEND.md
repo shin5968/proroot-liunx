@@ -32,7 +32,7 @@ The menu also switches the driver (`hybris`, `radv`, `none`) and can add libhybr
 
 Everything is installed under `/usr/lib/hybris`; no distribution library is overwritten. libhybris is used unless `/etc/proroot-driver` says `radv` or `none`. For a new guest PTY the app then:
 - sets `LD_LIBRARY_PATH=/usr/lib/hybris/lib`, `HYBRIS_EGLPLATFORM=wayland`, `HYBRIS_VULKANPLATFORM=wayland` and omits the RADV variables;
-- binds the existing host trees `/system`, `/system_ext`, `/vendor`, `/odm`, `/product`, `/apex`, `/linkerconfig` and `/dev/__properties__` into the guest with Proroot `-b`, because the vendor driver is loaded from its original paths.
+- binds the existing host trees `/system`, `/system_ext`, `/vendor`, `/odm`, `/product`, `/apex`, `/linkerconfig` and `/dev/__properties__` into the guest with Proroot `-b host:guest` (the bundled Proroot rejects the single-path form), because the vendor driver is loaded from its original paths.
 
 With `radv` selected, sessions behave exactly as before. `proroot-hybris COMMAND` runs a single command on libhybris from any session that has the host trees bound.
 

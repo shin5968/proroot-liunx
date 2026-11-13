@@ -82,7 +82,7 @@ Java_dev_proroot_app_NativePty_start(JNIEnv* env, jobject, jstring launcherArg, 
     std::vector<std::string> binds;
     // The test menu can turn the binds off to isolate launcher failures.
     const bool bindTrees = access((root + "/etc/proroot-hybris-nobind").c_str(), F_OK) != 0;
-    if (useHybris && bindTrees) for (const char* tree : hostTrees) if (access(tree, F_OK) == 0) binds.emplace_back(tree);
+    if (useHybris && bindTrees) for (const char* tree : hostTrees) if (access(tree, F_OK) == 0) binds.emplace_back(std::string(tree) + ":" + tree);
     // Build argv before fork: no allocation is allowed in the child.
     char r[] = "-r", zero[] = "-0", links[] = "--link2symlink", w[] = "-w", bind[] = "-b";
     char dir[] = "/root", guestShell[] = "/bin/bash", rcOption[] = "--rcfile";
