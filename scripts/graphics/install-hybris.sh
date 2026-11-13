@@ -19,7 +19,7 @@ rm -rf /usr/lib/hybris
 mv /usr/lib/hybris.new /usr/lib/hybris
 install -m 755 /usr/lib/hybris/share/proroot-driver /usr/lib/hybris/share/proroot-hybris /usr/local/bin/
 install -m 644 /usr/lib/hybris/share/profile.sh /etc/profile.d/proroot-hybris.sh
-printf '%s\n' hybris > /etc/proroot-driver
-printf '%s\n' 'Installed and selected libhybris. Stop and restart the terminal session,'
+printf '%s\n' 'Installed libhybris (experimental). Select it with: proroot-driver hybris'
 printf '%s\n' 'then run: /usr/lib/hybris/bin/proroot-hybris-probe'
 printf '%s\n' 'Return to RADV with: proroot-driver radv'
+printf '%s\n' 'On stock Android Bionic libhybris is known to crash; see docs/GRAPHICS_BACKEND.md.'

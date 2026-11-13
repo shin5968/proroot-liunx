@@ -72,8 +72,8 @@ Java_dev_proroot_app_NativePty_start(JNIEnv* env, jobject, jstring launcherArg, 
     const bool radvInstalled = !launcher.empty() &&
         access((root + "/usr/share/vulkan/icd.d/radeon_xclipse_icd.aarch64.json").c_str(), R_OK) == 0 &&
         access((root + "/usr/lib/xclipse/libvulkan_radeon.so").c_str(), R_OK) == 0;
-    // libhybris is preferred once installed; "radv" keeps the Mesa driver.
-    const bool useHybris = hybrisInstalled && !noDriver && strcmp(selected, "radv") != 0;
+    // libhybris is experimental and crashes on stock Bionic, so it is used only on explicit selection.
+    const bool useHybris = hybrisInstalled && !strcmp(selected, "hybris");
     const bool useRadv = radvInstalled && !noDriver && !useHybris;
     // libhybris loads the Android vendor driver from its original location, so
     // those read-only host trees must be visible at the same paths in the guest.

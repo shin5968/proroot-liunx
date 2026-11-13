@@ -98,13 +98,14 @@ class HybrisActivity : ComponentActivity() {
         refresh()
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
-                val ready = HybrisRuntime.installed(root) && selection != "radv" && selection != "none" && !busy
+                val ready = HybrisRuntime.installed(root) && selection == "hybris" && !busy
                 Column(Modifier.fillMaxSize().background(Color(0xFF101914)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("libhybris 드라이버 테스트", color = Color.White, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
                         TextButton(onClick = { finish() }) { Text("닫기") }
                     }
-                    Text("libhybris: $install · 선택: ${selection.ifEmpty { "자동(hybris 우선)" }}", color = Color(0xFFCBD5CF), style = MaterialTheme.typography.bodySmall)
+                    Text("libhybris: $install · 선택: ${selection.ifEmpty { "자동(RADV)" }}", color = Color(0xFFCBD5CF), style = MaterialTheme.typography.bodySmall)
+                    Text("실험 기능: 순정 Android에서는 Bionic TLS 충돌로 libhybris가 SIGSEGV를 냅니다. 테스트할 때만 hybris를 선택하세요.", color = Color(0xFFFFCC80), style = MaterialTheme.typography.bodySmall)
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for (driver in listOf("hybris", "radv", "none")) {
                             if (selection == driver) Button(enabled = !busy, onClick = {}) { Text(driver) }
