@@ -1,0 +1,33 @@
+name: libhybris glibc ARM64
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/libhybris-glibc.yml'
+      - 'scripts/graphics/build-hybris.sh'
+      - 'scripts/graphics/install-hybris.sh'
+permissions:
+  contents: read
+jobs:
+  hybris:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install native ARM64 build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential autoconf automake libtool pkg-config libwayland-dev libwayland-egl-backend-dev libvulkan-dev libegl-dev libgles-dev
+      - name: Build pinned libhybris against pinned Android headers
+        run: bash scripts/graphics/build-hybris.sh "$RUNNER_TEMP/hybris-work" "$GITHUB_WORKSPACE/hybris-dist"
+      - name: Check installer syntax and bundle integrity
+        run: |
+          sh -n scripts/graphics/install-hybris.sh
+          cd hybris-dist && sha256sum -c SHA256SUMS
+          tar -tzf libhybris-glibc-arm64.tar.gz | grep -q 'usr/lib/hybris/lib/libvulkan.so.1$'
+          tar -tzf libhybris-glibc-arm64.tar.gz | grep -q 'usr/lib/hybris/lib/libhybris/linker/q.so$'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libhybris-glibc-arm64
+          path: hybris-dist/
+          if-no-files-found: error

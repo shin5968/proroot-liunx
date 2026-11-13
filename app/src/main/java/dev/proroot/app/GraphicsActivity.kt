@@ -62,7 +62,8 @@ class GraphicsActivity : ComponentActivity() {
                     linuxSession?.close(); linuxSession = null
                     val text = try {
                         val data = JSONObject(File(root, "root/graphics-linux-report.json").readText())
-                        data.put("process_exit", code).put("scope", "LINUX_RADV_PROBE")
+                        data.put("process_exit", code).put("scope", "LINUX_GUEST_DRIVER_PROBE")
+                        data.put("selected_driver", File(root, "etc/proroot-driver").takeIf { it.isFile }?.readText()?.trim() ?: "auto")
                         data.put("stderr", File(root, "root/graphics-linux-stderr.log").takeIf { it.isFile }?.readText()?.takeLast(12000) ?: "")
                         data.toString(2)
                     } catch (error: Exception) { "RADV 검증 실패 ($code): $error" }

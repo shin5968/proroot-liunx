@@ -56,9 +56,39 @@ Java_dev_proroot_app_NativePty_start(JNIEnv* env, jobject, jstring launcherArg, 
     if (slave < 0) { fail(env, "open slave"); close(master); return nullptr; }
     std::string temporary = "PROROOT_TMP_DIR=" + tmp;
     // Decide before fork; Android's diagnostic shell must retain its own driver.
+    // /etc/proroot-driver (written by proroot-driver in the guest) holds hybris, radv or none.
+    char selected[16] = {};
+    if (!launcher.empty()) {
+        int file = open((root + "/etc/proroot-driver").c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+        if (file >= 0) {
+            ssize_t count = read(file, selected, sizeof(selected) - 1);
+            close(file);
+            for (ssize_t i = 0; i < count; ++i) if (selected[i] == '\n' || selected[i] == '\r') selected[i] = 0;
+        }
+    }
+    const bool noDriver = !strcmp(selected, "none");
+    const bool hybrisInstalled = !launcher.empty() &&
+        access((root + "/usr/lib/hybris/lib/libhybris/linker/q.so").c_str(), R_OK) == 0;
     const bool radvInstalled = !launcher.empty() &&
         access((root + "/usr/share/vulkan/icd.d/radeon_xclipse_icd.aarch64.json").c_str(), R_OK) == 0 &&
         access((root + "/usr/lib/xclipse/libvulkan_radeon.so").c_str(), R_OK) == 0;
+    // libhybris is preferred once installed; "radv" keeps the Mesa driver.
+    const bool useHybris = hybrisInstalled && !noDriver && strcmp(selected, "radv") != 0;
+    const bool useRadv = radvInstalled && !noDriver && !useHybris;
+    // libhybris loads the Android vendor driver from its original location, so
+    // those read-only host trees must be visible at the same paths in the guest.
+    static const char* const hostTrees[] = {"/system", "/system_ext", "/vendor", "/odm", "/product",
+        "/apex", "/linkerconfig", "/dev/__properties__"};
+    std::vector<std::string> binds;
+    if (useHybris) for (const char* tree : hostTrees) if (access(tree, F_OK) == 0) binds.emplace_back(tree);
+    // Build argv before fork: no allocation is allowed in the child.
+    char r[] = "-r", zero[] = "-0", links[] = "--link2symlink", w[] = "-w", bind[] = "-b";
+    char dir[] = "/root", guestShell[] = "/bin/bash", rcOption[] = "--rcfile";
+    char rcFile[] = "/etc/proroot.bashrc", interactive[] = "-i";
+    std::vector<char*> args = {launcher.data(), r, root.data(), zero, links};
+    for (auto& tree : binds) { args.push_back(bind); args.push_back(tree.data()); }
+    for (char* item : {w, dir, guestShell, rcOption, rcFile, interactive}) args.push_back(item);
+    args.push_back(nullptr);
     pid_t pid = fork();
     if (pid < 0) { fail(env, "fork"); close(master); close(slave); return nullptr; }
     if (pid == 0) {
@@ -75,18 +105,20 @@ Java_dev_proroot_app_NativePty_start(JNIEnv* env, jobject, jstring launcherArg, 
         char legacyDriver[] = "VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_xclipse_icd.aarch64.json";
         char renderNode[] = "PROROOT_DRM_RENDER_NODE=/dev/dri/renderD128";
         char nativeDrm[] = "PROROOT_NATIVE_DRM=1";
-        char* environment[] = {term, path, lang, home, temporary.data(),
-            radvInstalled ? driver : nullptr, legacyDriver, renderNode, nativeDrm, nullptr};
+        char hybrisLibraries[] = "LD_LIBRARY_PATH=/usr/lib/hybris/lib";
+        char hybrisEgl[] = "HYBRIS_EGLPLATFORM=wayland";
+        char hybrisVulkan[] = "HYBRIS_VULKANPLATFORM=wayland";
+        char* environment[10] = {term, path, lang, home, temporary.data()};
+        int count = 5;
+        if (useRadv) for (char* item : {driver, legacyDriver, renderNode, nativeDrm}) environment[count++] = item;
+        if (useHybris) for (char* item : {hybrisLibraries, hybrisEgl, hybrisVulkan}) environment[count++] = item;
+        environment[count] = nullptr;
         if (launcher.empty()) {
-            char shell[] = "/system/bin/sh"; char interactive[] = "-i";
-            char* args[] = {shell, interactive, nullptr};
-            execve(shell, args, environment);
+            char shell[] = "/system/bin/sh";
+            char* hostArgs[] = {shell, interactive, nullptr};
+            execve(shell, hostArgs, environment);
         } else {
-            char r[] = "-r", zero[] = "-0", links[] = "--link2symlink", w[] = "-w";
-            char dir[] = "/root", shell[] = "/bin/bash", rcOption[] = "--rcfile";
-            char rcFile[] = "/etc/proroot.bashrc", interactive[] = "-i";
-            char* args[] = {launcher.data(), r, root.data(), zero, links, w, dir, shell, rcOption, rcFile, interactive, nullptr};
-            execve(launcher.c_str(), args, environment);
+            execve(launcher.c_str(), args.data(), environment);
         }
         constexpr char message[] = "\r\nexecve failed; inspect runtime files and Android execution policy.\r\n";
         (void)!write(2, message, sizeof(message)-1); _exit(127);
